@@ -143,21 +143,34 @@ Generate all {count} questions now.
         
         return response.choices[0].message.content
     
-    def generate_practice_questions(self, topic, count=5):
+    def generate_practice_questions(self, topic, language='uz', count=5):
         """Generate practice questions for specific topic"""
+        lang_text = "Uzbek" if language == 'uz' else "English"
+        
         prompt = f"""
-        Generate {count} practice questions about "{topic}" in Uzbek for DTM exam.
-        Include step-by-step solutions.
-        Multiple choice format with explanations.
-        """
+Generate exactly {count} multiple choice math questions about "{topic}" in {lang_text} for DTM exam.
+
+For EACH question, provide in this EXACT format:
+
+QUESTION: [question text]
+A) [option A]
+B) [option B]
+C) [option C]
+D) [option D]
+CORRECT: [A/B/C/D]
+TOPIC: {topic}
+
+Generate all {count} questions now.
+"""
         
         response = openai.ChatCompletion.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=1000
+            max_tokens=1500
         )
         
-        return response.choices[0].message.content
+        content = response.choices[0].message.content
+        return self._parse_questions(content)
     
     def analyze_diagnostic_results(self, correct_answers, total_questions):
         """Analyze diagnostic test results and provide feedback"""

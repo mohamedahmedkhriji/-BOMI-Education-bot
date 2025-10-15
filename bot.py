@@ -1,5 +1,6 @@
 import os
 import asyncio
+import requests
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -44,16 +45,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         
         elif learning_status in ['Test Completed', 'Onboarded']:
-            test_score = float(user_data.get('Test Score', '0'))
-            if lang == 'uz':
-                text = f"Xush kelibsiz! 👋\n\n✅ Test yakunlandi ({test_score:.0f}%)\n\nO'quv rejangizni ko'ring."
-                btn = "📅 Rejani ko'rish"
-            else:
-                text = f"Welcome back! 👋\n\n✅ Test completed ({test_score:.0f}%)\n\nView your study plan."
-                btn = "📅 View Plan"
+            test_score_str = user_data.get('Test Score', '0')
+            test_score = float(test_score_str) if test_score_str else 0
             
-            keyboard = [[InlineKeyboardButton(btn, callback_data="get_plan")]]
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+            if test_score > 0:
+                if lang == 'uz':
+                    text = f"Xush kelibsiz! 👋\n\n✅ Test yakunlandi ({test_score:.0f}%)\n\nO'quv rejangizni ko'ring."
+                    btn = "📅 Rejani ko'rish"
+                else:
+                    text = f"Welcome back! 👋\n\n✅ Test completed ({test_score:.0f}%)\n\nView your study plan."
+                    btn = "📅 View Plan"
+                
+                keyboard = [[InlineKeyboardButton(btn, callback_data="get_plan")]]
+                await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+            else:
+                if lang == 'uz':
+                    text = "Xush kelibsiz! 👋\n\nDiagnostik testni yakunlang."
+                    btn = "🧪 Testni boshlash"
+                else:
+                    text = "Welcome back! 👋\n\nPlease complete the diagnostic test first."
+                    btn = "🧪 Start Test"
+                
+                keyboard = [[InlineKeyboardButton(btn, callback_data="start_test")]]
+                await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         
         else:
             if lang == 'uz':
@@ -243,11 +257,32 @@ async def get_study_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     
     user = db.get_user(user_id)
-    weak = user.get('fields', {}).get('Weak Topics', '').split(', ') if user else []
+    user_data = user.get('fields', {}) if user else {}
+    weak = user_data.get('Weak Topics', '').split(', ') if user_data.get('Weak Topics') else []
+    lang = user_data.get('Language', 'en')
     
-    text = f"📅 Your 2-week plan:\n\nDay 1: {weak[0] if len(weak) > 0 else 'Algebra'}\nDay 2: {weak[1] if len(weak) > 1 else 'Geometry'}\nDay 3: {weak[2] if len(weak) > 2 else 'Functions'}\nDay 4-14: More topics...\n\n📚 When to start?"
-    keyboard = [[InlineKeyboardButton("🚀 Now", callback_data="start_now")], [InlineKeyboardButton("⏰ Later", callback_data="set_reminder")]]
-    await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    # Default topics if weak topics not available
+    all_topics = weak + ['Algebra', 'Geometry', 'Functions', 'Trigonometry', 'Logarithms', 'Equations', 'Inequalities', 'Sequences', 'Probability', 'Statistics', 'Derivatives', 'Integrals', 'Vectors', 'Complex Numbers']
+    all_topics = all_topics[:14]  # Take first 14 unique topics
+    
+    if lang == 'uz':
+        header = "📅 Sizning 2 haftalik rejangiz:\n\n"
+        footer = "\n\n📚 Qachon boshlaysiz?"
+        btn_now = "🚀 Hozir"
+        btn_later = "⏰ Keyinroq"
+    else:
+        header = "📅 Your 2-week study plan:\n\n"
+        footer = "\n\n📚 When to start?"
+        btn_now = "🚀 Now"
+        btn_later = "⏰ Later"
+    
+    plan_text = header
+    for i in range(14):
+        plan_text += f"Day {i+1}: {all_topics[i]}\n"
+    plan_text += footer
+    
+    keyboard = [[InlineKeyboardButton(btn_now, callback_data="start_now")], [InlineKeyboardButton(btn_later, callback_data="set_reminder")]]
+    await query.message.reply_text(plan_text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def start_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -259,9 +294,9 @@ async def start_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.update_user(user['id'], {'Learning Status': 'In Progress', 'Timezone': 'Not Set', 'Last Active': datetime.now().isoformat()})
         
         if lang == 'uz':
-            msg = "✅ Boshlandi! /start buyrug'i bilan 1-kunni boshlang."
+            msg = "✅ Boshlandi! /daily_lesson buyrug'i bilan 1-kunni boshlang."
         else:
-            msg = "✅ Started! Use /start to begin Day 1."
+            msg = "✅ Started! Use /daily_lesson to begin Day 1."
         
         await query.message.reply_text(msg)
 
@@ -274,10 +309,223 @@ async def set_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_sessions[user_id] = {}
     user_sessions[user_id]['waiting_for_time'] = True
 
+async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user = db.get_user(user_id)
+    
+    if not user:
+        await update.message.reply_text("Please /start first.")
+        return
+    
+    user_data = user.get('fields', {})
+    learning_status = user_data.get('Learning Status', '')
+    
+    if learning_status != 'In Progress':
+        await update.message.reply_text("Please complete onboarding and start your study plan first.")
+        return
+    
+    current_day = int(user_data.get('Current Day', '1'))
+    lang = user_data.get('Language', 'en')
+    weak_topics = user_data.get('Weak Topics', '').split(', ') if user_data.get('Weak Topics') else []
+    
+    all_topics = weak_topics + ['Algebra', 'Geometry', 'Functions', 'Trigonometry', 'Logarithms', 'Equations', 'Inequalities', 'Sequences', 'Probability', 'Statistics', 'Derivatives', 'Integrals', 'Vectors', 'Complex Numbers']
+    topic = all_topics[current_day - 1] if current_day <= len(all_topics) else 'Review'
+    
+    msg = f"⏳ Generating Day {current_day} lesson: {topic}..." if lang == 'en' else f"⏳ {current_day}-kun darsi tayyorlanmoqda: {topic}..."
+    await update.message.reply_text(msg)
+    
+    from ai_content import AIContentGenerator
+    ai = AIContentGenerator()
+    
+    try:
+        theory = ai.generate_theory_explanation(topic, lang)
+        questions = ai.generate_practice_questions(topic, lang, count=5)
+        
+        lesson_id = f"lesson_{user_id}_day{current_day}"
+        tasks = [f"{q['text']}\nA) {q['options'][0]}\nB) {q['options'][1]}\nC) {q['options'][2]}\nD) {q['options'][3]}" for q in questions]
+        
+        lesson_data = {
+            "fields": {
+                "Lesson ID": lesson_id,
+                "User ID": str(user_id),
+                "Day": str(current_day),
+                "Topic": topic,
+                "Theory Summary": theory[:1000],
+                "Task 1": tasks[0][:1000] if len(tasks) > 0 else "",
+                "Task 2": tasks[1][:1000] if len(tasks) > 1 else "",
+                "Task 3": tasks[2][:1000] if len(tasks) > 2 else "",
+                "Task 4": tasks[3][:1000] if len(tasks) > 3 else "",
+                "Task 5": tasks[4][:1000] if len(tasks) > 4 else "",
+                "Lesson Status": "In Progress",
+                "Expected Task": "task_1",
+                "Current Task Index": 1,
+                "Lesson Start Time": datetime.now().isoformat()
+            }
+        }
+        
+        import requests
+        response = requests.post(
+            f"https://api.airtable.com/v0/{db.base_id}/tblInFtIh5fZt59g4",
+            headers=db.headers,
+            json=lesson_data
+        )
+        
+        user_sessions[user_id] = {
+            'lesson_id': lesson_id,
+            'day': current_day,
+            'topic': topic,
+            'questions': questions,
+            'current_task': 0,
+            'answers': [],
+            'lang': lang
+        }
+        
+        theory_msg = f"📚 Day {current_day}: {topic}\n\n{theory[:500]}...\n\n" if lang == 'en' else f"📚 {current_day}-kun: {topic}\n\n{theory[:500]}...\n\n"
+        await update.message.reply_text(theory_msg)
+        
+        await show_task(update.message, user_id)
+        
+    except Exception as e:
+        print(f"Error generating lesson: {e}")
+        await update.message.reply_text(f"Error: {str(e)}")
+
+async def show_task(message, user_id):
+    session = user_sessions.get(user_id)
+    if not session:
+        return
+    
+    current_task = session['current_task']
+    questions = session['questions']
+    lang = session.get('lang', 'en')
+    
+    if current_task >= len(questions):
+        await complete_lesson(message, user_id)
+        return
+    
+    question = questions[current_task]
+    task_num = current_task + 1
+    
+    text = f"✍️ Task {task_num}/5:\n\n{question['text']}\n\nA) {question['options'][0]}\nB) {question['options'][1]}\nC) {question['options'][2]}\nD) {question['options'][3]}"
+    keyboard = [[InlineKeyboardButton(opt, callback_data=f"task_ans_{opt}_{user_id}")] for opt in ['A', 'B', 'C', 'D']]
+    await message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def handle_task_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    parts = query.data.split('_')
+    answer = parts[2]
+    user_id = int(parts[3])
+    
+    session = user_sessions.get(user_id)
+    if not session:
+        return
+    
+    current_task = session['current_task']
+    question = session['questions'][current_task]
+    is_correct = answer == question['correct']
+    
+    session['answers'].append({
+        'answer': answer,
+        'correct': question['correct'],
+        'is_correct': is_correct,
+        'question': question['text']
+    })
+    
+    task_num = current_task + 1
+    task_field = f"Task {task_num} Answer"
+    score_field = f"Task {task_num} Score"
+    
+    import requests
+    params = {"filterByFormula": f"{{Lesson ID}} = '{session['lesson_id']}'"}
+    response = requests.get(
+        f"https://api.airtable.com/v0/{db.base_id}/tblInFtIh5fZt59g4",
+        headers=db.headers,
+        params=params
+    )
+    
+    records = response.json().get('records', [])
+    if records:
+        record_id = records[0]['id']
+        update_data = {
+            "fields": {
+                task_field: answer,
+                score_field: 1 if is_correct else 0,
+                "Current Task Index": task_num + 1,
+                "Expected Task": f"task_{task_num + 1}"
+            }
+        }
+        
+        requests.patch(
+            f"https://api.airtable.com/v0/{db.base_id}/tblInFtIh5fZt59g4/{record_id}",
+            headers=db.headers,
+            json=update_data
+        )
+    
+    feedback = "✅ Correct!" if is_correct else f"❌ Wrong. Correct: {question['correct']}"
+    await query.message.reply_text(feedback)
+    
+    session['current_task'] += 1
+    await asyncio.sleep(0.5)
+    await show_task(query.message, user_id)
+
+async def complete_lesson(message, user_id):
+    session = user_sessions.get(user_id)
+    if not session:
+        return
+    
+    answers = session['answers']
+    correct = sum(1 for a in answers if a['is_correct'])
+    total = len(answers)
+    score = (correct / total) * 100
+    lang = session.get('lang', 'en')
+    
+    from ai_content import AIContentGenerator
+    ai = AIContentGenerator()
+    
+    feedback_prompt = f"User completed {total} tasks on {session['topic']}. Score: {correct}/{total}. Provide motivational feedback and tips in {'Uzbek' if lang == 'uz' else 'English'}."
+    ai_feedback = ai.generate_theory_explanation(feedback_prompt, lang)[:500]
+    
+    import requests
+    params = {"filterByFormula": f"{{Lesson ID}} = '{session['lesson_id']}'"}
+    response = requests.get(
+        f"https://api.airtable.com/v0/{db.base_id}/tblInFtIh5fZt59g4",
+        headers=db.headers,
+        params=params
+    )
+    
+    records = response.json().get('records', [])
+    if records:
+        record_id = records[0]['id']
+        update_data = {
+            "fields": {
+                "Lesson Status": "Completed",
+                "Total Score": score,
+                "AI Feedback": ai_feedback,
+                "Lesson End Time": datetime.now().isoformat()
+            }
+        }
+        
+        requests.patch(
+            f"https://api.airtable.com/v0/{db.base_id}/tblInFtIh5fZt59g4/{record_id}",
+            headers=db.headers,
+            json=update_data
+        )
+    
+    user = db.get_user(user_id)
+    if user:
+        next_day = session['day'] + 1
+        db.update_user(user['id'], {'Current Day': str(next_day)})
+    
+    result_msg = f"🎉 Day {session['day']} completed!\n\n📊 Score: {correct}/{total} ({score:.0f}%)\n\n💬 {ai_feedback}" if lang == 'en' else f"🎉 {session['day']}-kun yakunlandi!\n\n📊 Ball: {correct}/{total} ({score:.0f}%)\n\n💬 {ai_feedback}"
+    await message.reply_text(result_msg)
+    
+    user_sessions.pop(user_id, None)
+
 async def daily_lesson(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.message.reply_text("📚 Lesson feature coming soon!")
+    await daily_lesson_command(update, context)
 
 async def language_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -376,7 +624,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if user:
                 db.update_user(user['id'], {'Timezone': text, 'Learning Status': 'In Progress', 'Last Active': datetime.now().isoformat()})
             user_sessions.pop(user_id, None)
-            msg = f"✅ {text} da eslatma o'rnatildi!\n\n/start buyrug'i bilan boshlang." if lang == 'uz' else f"✅ Reminder set for {text}!\n\nUse /start to begin."
+            msg = f"✅ {text} da eslatma o'rnatildi!\n\n/daily_lesson buyrug'ini ishlating." if lang == 'uz' else f"✅ Reminder set for {text}!\n\nUse /daily_lesson to begin."
             await update.message.reply_text(msg)
         else:
             msg = "❌ Noto'g'ri format. HH:MM formatida yozing\nMasalan: 18:00" if lang == 'uz' else "❌ Invalid format. Use HH:MM\nExample: 18:00"
@@ -387,10 +635,12 @@ def main():
     app = Application.builder().token(token).build()
     
     app.add_handler(CommandHandler('start', start))
+    app.add_handler(CommandHandler('daily_lesson', daily_lesson_command))
     app.add_handler(CallbackQueryHandler(language_selected, pattern="^lang_"))
     app.add_handler(CallbackQueryHandler(level_selected, pattern="^level_"))
     app.add_handler(CallbackQueryHandler(start_test, pattern="^start_test$"))
     app.add_handler(CallbackQueryHandler(handle_answer, pattern="^ans_"))
+    app.add_handler(CallbackQueryHandler(handle_task_answer, pattern="^task_ans_"))
     app.add_handler(CallbackQueryHandler(get_study_plan, pattern="^get_plan$"))
     app.add_handler(CallbackQueryHandler(start_now, pattern="^start_now$"))
     app.add_handler(CallbackQueryHandler(set_reminder, pattern="^set_reminder$"))
