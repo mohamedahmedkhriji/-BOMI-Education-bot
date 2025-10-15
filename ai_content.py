@@ -27,6 +27,97 @@ class AIContentGenerator:
         
         return response.choices[0].message.content
     
+    def generate_diagnostic_questions_structured(self, level='Beginner', language='uz', count=12):
+        """Generate structured diagnostic questions based on level"""
+        lang_text = "Uzbek" if language == 'uz' else "English"
+        
+        difficulty_map = {
+            'Beginner': 'basic level (grades 8-9)',
+            'Intermediate': 'intermediate level (grade 10)',
+            'Advanced': 'advanced level (grade 11, DTM exam difficulty)'
+        }
+        
+        difficulty = difficulty_map.get(level, 'intermediate level')
+        
+        prompt = f"""
+Generate exactly {count} multiple choice math questions for DTM exam preparation in {lang_text} language.
+Difficulty: {difficulty}
+
+Topics to cover (mix them):
+- Algebra (equations, inequalities)
+- Geometry (triangles, circles, areas)
+- Functions
+- Trigonometry
+- Arithmetic operations
+- Logarithms
+
+For EACH question, provide in this EXACT format:
+
+QUESTION: [question text]
+A) [option A]
+B) [option B]
+C) [option C]
+D) [option D]
+CORRECT: [A/B/C/D]
+TOPIC: [topic name]
+
+Generate all {count} questions now.
+"""
+        
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=2500,
+                temperature=0.7
+            )
+            
+            content = response.choices[0].message.content
+            return self._parse_questions(content)
+        except Exception as e:
+            print(f"Error generating questions: {e}")
+            return None
+    
+    def _parse_questions(self, content):
+        """Parse AI response into structured question format"""
+        print(f"Parsing AI response (first 300 chars): {content[:300]}...")
+        questions = []
+        lines = content.strip().split('\n')
+        
+        current_q = {}
+        options = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            if line.startswith('QUESTION:'):
+                if current_q and 'text' in current_q:
+                    current_q['options'] = options
+                    questions.append(current_q)
+                current_q = {'text': line.replace('QUESTION:', '').strip()}
+                options = []
+            elif line.startswith('A)'):
+                options.append(line[2:].strip())
+            elif line.startswith('B)'):
+                options.append(line[2:].strip())
+            elif line.startswith('C)'):
+                options.append(line[2:].strip())
+            elif line.startswith('D)'):
+                options.append(line[2:].strip())
+            elif line.startswith('CORRECT:'):
+                current_q['correct'] = line.replace('CORRECT:', '').strip()
+            elif line.startswith('TOPIC:'):
+                current_q['topic'] = line.replace('TOPIC:', '').strip().lower()
+        
+        if current_q and 'text' in current_q:
+            current_q['options'] = options
+            questions.append(current_q)
+        
+        print(f"Parsed {len(questions)} questions")
+        return questions if len(questions) >= 10 else None
+    
     def generate_theory_explanation(self, topic, language='uz'):
         """Generate detailed theory explanation with examples"""
         lang_text = "Uzbek" if language == 'uz' else "English"

@@ -91,20 +91,29 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user:
             db.update_user(user['id'], {'Mode': 'quiz_answer', 'Expected': 'quiz_answer', 'Last Active': datetime.now().isoformat()})
         
-        questions = [
-            {'text': "If 2x + 5 = 13, what is x?", 'options': ["3", "4", "5", "6"], 'correct': 'B', 'topic': 'algebra'},
-            {'text': "12 + 8 × 3 = ?", 'options': ["24", "32", "36", "48"], 'correct': 'C', 'topic': 'arithmetic'},
-            {'text': "If y = 2x + 1 and x = 3, then y = ?", 'options': ["5", "6", "7", "8"], 'correct': 'C', 'topic': 'functions'},
-            {'text': "In right triangle, a=3, b=4, c=?", 'options': ["5", "4", "6", "7"], 'correct': 'A', 'topic': 'geometry'},
-            {'text': "x² - 5x + 6 = 0, x = ?", 'options': ["1,2", "2,3", "3,4", "1,6"], 'correct': 'B', 'topic': 'algebra'},
-            {'text': "sin(30°) = ?", 'options': ["0.5", "0.6", "0.7", "0.8"], 'correct': 'A', 'topic': 'trigonometry'},
-            {'text': "2⁴ = ?", 'options': ["8", "12", "14", "16"], 'correct': 'D', 'topic': 'arithmetic'},
-            {'text': "Circle radius 5, area = ?", 'options': ["15π", "20π", "25π", "30π"], 'correct': 'C', 'topic': 'geometry'},
-            {'text': "log₂(8) = ?", 'options': ["2", "3", "4", "5"], 'correct': 'B', 'topic': 'logarithms'},
-            {'text': "3x + 2 > 11, x > ?", 'options': ["3", "4", "5", "6"], 'correct': 'A', 'topic': 'algebra'},
-            {'text': "5! = ?", 'options': ["60", "100", "110", "120"], 'correct': 'D', 'topic': 'combinatorics'},
-            {'text': "f(x) = x² + 1, f(2) = ?", 'options': ["5", "6", "7", "8"], 'correct': 'A', 'topic': 'functions'}
-        ]
+        user_data = user.get('fields', {})
+        level = user_data.get('Level', 'Beginner')
+        lang = user_data.get('Language', 'en')
+        
+        from ai_content import AIContentGenerator
+        ai = AIContentGenerator()
+        
+        await query.message.reply_text("⏳ Generating questions... Please wait.")
+        
+        try:
+            questions = ai.generate_diagnostic_questions_structured(level=level, language=lang, count=12)
+        except Exception as e:
+            print(f"AI Generation Error: {e}")
+            await query.message.reply_text(f"Error: {str(e)}")
+            processing.discard(key)
+            return
+        
+        if not questions:
+            await query.message.reply_text("Could not generate enough questions. Please try again.")
+            processing.discard(key)
+            return
+        
+        print(f"Generated {len(questions)} questions for level {level} in {lang}")
         
         session_id = db.create_quiz_session(user_id, questions)
         
@@ -288,6 +297,30 @@ async def language_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text(text)
     user_sessions[user_id] = {'step': 'waiting_name', 'lang': lang}
 
+async def level_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    level = query.data.split('_')[1].capitalize()
+    
+    session = user_sessions.get(user_id, {})
+    lang = session.get('lang', 'en')
+    
+    user = db.get_user(user_id)
+    if user:
+        db.update_user(user['id'], {'Level': level, 'Learning Status': 'Onboarded', 'Last Active': datetime.now().isoformat()})
+    
+    if lang == 'uz':
+        msg = f"✅ Ajoyib! Endi diagnostik testni boshlaylik.\n\n📝 12 ta savol, taxminan 10 daqiqa."
+        btn_text = "🧪 Testni boshlash"
+    else:
+        msg = f"✅ Great! Let's start the diagnostic test.\n\n📝 12 questions, about 10 minutes."
+        btn_text = "🧪 Start Test"
+    
+    keyboard = [[InlineKeyboardButton(btn_text, callback_data="start_test")]]
+    await query.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+    user_sessions.pop(user_id, None)
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     session = user_sessions.get(user_id, {})
@@ -315,18 +348,26 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif session.get('step') == 'waiting_target':
         user = db.get_user(user_id)
         if user:
-            db.update_user(user['id'], {'Expected': text, 'Learning Status': 'Onboarded', 'Last Active': datetime.now().isoformat()})
+            db.update_user(user['id'], {'Expected': text, 'Last Active': datetime.now().isoformat()})
         
         if lang == 'uz':
-            msg = f"✅ Ajoyib! Endi diagnostik testni boshlaylik.\n\n📝 12 ta savol, taxminan 10 daqiqa."
-            btn_text = "🧪 Testni boshlash"
+            msg = "📊 Sizning hozirgi darajangiz qanday?"
+            keyboard = [
+                [InlineKeyboardButton("🟢 Boshlang'ich (Beginner)", callback_data="level_beginner")],
+                [InlineKeyboardButton("🟡 O'rta (Intermediate)", callback_data="level_intermediate")],
+                [InlineKeyboardButton("🔴 Yuqori (Advanced)", callback_data="level_advanced")]
+            ]
         else:
-            msg = f"✅ Great! Let's start the diagnostic test.\n\n📝 12 questions, about 10 minutes."
-            btn_text = "🧪 Start Test"
+            msg = "📊 What's your current level?"
+            keyboard = [
+                [InlineKeyboardButton("🟢 Beginner", callback_data="level_beginner")],
+                [InlineKeyboardButton("🟡 Intermediate", callback_data="level_intermediate")],
+                [InlineKeyboardButton("🔴 Advanced", callback_data="level_advanced")]
+            ]
         
-        keyboard = [[InlineKeyboardButton(btn_text, callback_data="start_test")]]
         await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
-        user_sessions.pop(user_id, None)
+        session['step'] = 'waiting_level'
+        session['target'] = text
     
     elif session.get('waiting_for_time'):
         import re
@@ -347,6 +388,7 @@ def main():
     
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CallbackQueryHandler(language_selected, pattern="^lang_"))
+    app.add_handler(CallbackQueryHandler(level_selected, pattern="^level_"))
     app.add_handler(CallbackQueryHandler(start_test, pattern="^start_test$"))
     app.add_handler(CallbackQueryHandler(handle_answer, pattern="^ans_"))
     app.add_handler(CallbackQueryHandler(get_study_plan, pattern="^get_plan$"))
