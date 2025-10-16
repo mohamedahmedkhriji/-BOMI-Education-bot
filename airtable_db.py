@@ -86,6 +86,10 @@ class AirtableDB:
     
     def create_quiz_session(self, user_id, questions, lesson_day=None):
         """Create quiz questions in Airtable"""
+        if not questions:
+            print("Error: questions is None or empty")
+            return None
+        
         session_id = f"quiz_{user_id}_{int(datetime.now().timestamp())}"
         
         # Update user with active quiz session

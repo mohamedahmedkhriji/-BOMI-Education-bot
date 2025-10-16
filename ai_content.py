@@ -116,7 +116,7 @@ Generate all {count} questions now.
             questions.append(current_q)
         
         print(f"Parsed {len(questions)} questions")
-        return questions if len(questions) >= 10 else None
+        return questions
     
     def generate_theory_explanation(self, topic, language='uz'):
         """Generate detailed theory explanation with examples"""
@@ -163,14 +163,19 @@ TOPIC: {topic}
 Generate all {count} questions now.
 """
         
-        response = openai.ChatCompletion.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=1500
-        )
-        
-        content = response.choices[0].message.content
-        return self._parse_questions(content)
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1500
+            )
+            
+            content = response.choices[0].message.content
+            questions = self._parse_questions(content)
+            return questions if questions and len(questions) >= count else []
+        except Exception as e:
+            print(f"Error in generate_practice_questions: {e}")
+            return []
     
     def analyze_diagnostic_results(self, correct_answers, total_questions):
         """Analyze diagnostic test results and provide feedback"""

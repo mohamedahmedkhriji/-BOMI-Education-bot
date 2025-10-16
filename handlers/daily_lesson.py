@@ -45,6 +45,15 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
         
         questions = ai.generate_practice_questions(topic, lang, count=3)
         
+        # Validate questions before proceeding
+        if not questions:
+            await update.message.reply_text("Error: Could not generate questions. Please try again.")
+            return
+        
+        if len(questions) < 3:
+            await update.message.reply_text(f"Error: Only generated {len(questions)} questions. Please try again.")
+            return
+        
         # Save practice questions to Quizzes table
         practice_session_id = db.create_quiz_session(user_id, questions, lesson_day=current_day)
         
@@ -186,8 +195,12 @@ async def handle_task_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
             json=update_data
         )
     
-    feedback = "✅ Correct!" if is_correct else f"❌ Wrong. Correct: {question['correct']}"
-    await query.message.reply_text(feedback)
+    if is_correct:
+        feedback = "✅ Correct!" if session.get('lang') == 'en' else "✅ To'g'ri!"
+        await query.message.reply_text(feedback)
+    else:
+        feedback = f"❌ Wrong. Correct: {question['correct']}\n\n💡 {ai_feedback}" if session.get('lang') == 'en' else f"❌ Noto'g'ri. To'g'ri javob: {question['correct']}\n\n💡 {ai_feedback}"
+        await query.message.reply_text(feedback)
     
     session['current_task'] += 1
     await asyncio.sleep(0.5)
@@ -197,6 +210,9 @@ async def complete_lesson(message, user_id, user_sessions, db):
     session = user_sessions.get(user_id)
     if not session:
         return
+    
+    # Don't pop session yet if it's not extra practice
+    is_extra = session.get('is_extra_practice', False)
     
     answers = session['answers']
     correct = sum(1 for a in answers if a['is_correct'])
@@ -231,26 +247,107 @@ async def complete_lesson(message, user_id, user_sessions, db):
     if 'practice_session_id' in session:
         db.complete_quiz_session(session['practice_session_id'], score)
     
-    user = db.get_user(user_id)
-    if user:
-        next_day = session['day'] + 1
-        lessons_completed = int(user.get('fields', {}).get('Lessons Completed', '0') or 0) + 1
-        
-        db.update_user(user['id'], {
-            'Current Day': str(next_day),
-            'Lessons Completed': str(lessons_completed),
-            'Active Lesson ID': '',
-            'Mode': 'idle',
-            'Expected': 'none',
-            'Last Active': datetime.now().isoformat()
-        })
+    # Only update user progress if this is the main lesson, not extra practice
+    if not is_extra:
+        user = db.get_user(user_id)
+        if user:
+            next_day = session['day'] + 1
+            lessons_completed = int(user.get('fields', {}).get('Lessons Completed', '0') or 0) + 1
+            
+            db.update_user(user['id'], {
+                'Current Day': str(next_day),
+                'Lessons Completed': str(lessons_completed),
+                'Active Lesson ID': '',
+                'Mode': 'idle',
+                'Expected': 'none',
+                'Last Active': datetime.now().isoformat()
+            })
     
     result_msg = f"🎉 Day {session['day']} completed!\n\n📊 Score: {correct}/{total} ({score:.0f}%)\n\n💬 {ai_feedback}" if lang == 'en' else f"🎉 {session['day']}-kun yakunlandi!\n\n📊 Ball: {correct}/{total} ({score:.0f}%)\n\n💬 {ai_feedback}"
-    await message.reply_text(result_msg)
     
-    user_sessions.pop(user_id, None)
+    if is_extra:
+        # For extra practice, just show results and clear session
+        await message.reply_text(result_msg)
+        user_sessions.pop(user_id, None)
+    else:
+        # For main lesson, ask if user wants more practice or move to next day
+        more_btn = "📝 More Practice" if lang == 'en' else "📝 Ko'proq mashq"
+        next_btn = "➡️ Next Day" if lang == 'en' else "➡️ Keyingi kun"
+        
+        keyboard = [
+            [InlineKeyboardButton(more_btn, callback_data=f"more_practice_{user_id}")],
+            [InlineKeyboardButton(next_btn, callback_data=f"next_day_{user_id}")]
+        ]
+        
+        await message.reply_text(result_msg, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def daily_lesson_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, db, user_sessions):
     query = update.callback_query
     await query.answer()
     await daily_lesson_command(update, context, db, user_sessions)
+
+
+async def handle_more_practice(update: Update, context: ContextTypes.DEFAULT_TYPE, db, user_sessions):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = int(query.data.split('_')[2])
+    user = db.get_user(user_id)
+    
+    if not user:
+        return
+    
+    user_data = user.get('fields', {})
+    current_day = int(user_data.get('Current Day', '1'))
+    lang = user_data.get('Language', 'en')
+    weak_topics = user_data.get('Weak Topics', '').split(', ') if user_data.get('Weak Topics') else []
+    
+    all_topics = weak_topics + ['Algebra', 'Geometry', 'Functions', 'Trigonometry', 'Logarithms', 'Equations', 'Inequalities', 'Sequences', 'Probability', 'Statistics', 'Derivatives', 'Integrals', 'Vectors', 'Complex Numbers']
+    topic = all_topics[current_day - 2] if current_day > 1 else all_topics[0]
+    
+    msg = "⏳ Generating more practice questions..." if lang == 'en' else "⏳ Ko'proq savollar tayyorlanmoqda..."
+    await query.message.reply_text(msg)
+    
+    from ai_content import AIContentGenerator
+    ai = AIContentGenerator()
+    
+    try:
+        questions = ai.generate_practice_questions(topic, lang, count=3)
+        
+        if not questions or len(questions) < 3:
+            await query.message.reply_text("Error generating questions. Please try again.")
+            return
+        
+        practice_session_id = db.create_quiz_session(user_id, questions, lesson_day=current_day-1)
+        
+        user_sessions[user_id] = {
+            'day': current_day - 1,
+            'topic': topic,
+            'questions': questions,
+            'current_task': 0,
+            'answers': [],
+            'lang': lang,
+            'practice_session_id': practice_session_id,
+            'is_extra_practice': True
+        }
+        
+        await show_task(query.message, user_id, user_sessions)
+        
+    except Exception as e:
+        print(f"Error generating practice: {e}")
+        await query.message.reply_text(f"Error: {str(e)}")
+
+async def handle_next_day(update: Update, context: ContextTypes.DEFAULT_TYPE, db, user_sessions):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = int(query.data.split('_')[2])
+    user_sessions.pop(user_id, None)
+    
+    user = db.get_user(user_id)
+    if user:
+        lang = user.get('fields', {}).get('Language', 'en')
+        current_day = int(user.get('fields', {}).get('Current Day', '1'))
+        
+        msg = f"✅ Great! See you tomorrow for Day {current_day}! 🚀" if lang == 'en' else f"✅ Ajoyib! Ertaga {current_day}-kun uchun ko'rishguncha! 🚀"
+        await query.message.reply_text(msg)

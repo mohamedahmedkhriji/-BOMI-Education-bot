@@ -8,7 +8,7 @@ from handlers.start import start
 from handlers.onboarding import language_selected, level_selected, handle_text
 from handlers.diagnostic_test import start_test, handle_answer
 from handlers.study_plan import get_study_plan, start_now, set_reminder
-from handlers.daily_lesson import daily_lesson_command, daily_lesson_callback, handle_task_answer
+from handlers.daily_lesson import daily_lesson_command, daily_lesson_callback, handle_task_answer, handle_more_practice, handle_next_day
 
 load_dotenv()
 db = AirtableDB()
@@ -50,6 +50,12 @@ async def daily_lesson_callback_wrapper(update, context):
 async def handle_task_answer_wrapper(update, context):
     await handle_task_answer(update, context, db, user_sessions)
 
+async def handle_more_practice_wrapper(update, context):
+    await handle_more_practice(update, context, db, user_sessions)
+
+async def handle_next_day_wrapper(update, context):
+    await handle_next_day(update, context, db, user_sessions)
+
 async def handle_text_wrapper(update, context):
     await handle_text(update, context, db, user_sessions)
 
@@ -71,6 +77,8 @@ def main():
     app.add_handler(CallbackQueryHandler(start_now_wrapper, pattern="^start_now$"))
     app.add_handler(CallbackQueryHandler(set_reminder_wrapper, pattern="^set_reminder$"))
     app.add_handler(CallbackQueryHandler(daily_lesson_callback_wrapper, pattern="^daily_lesson$"))
+    app.add_handler(CallbackQueryHandler(handle_more_practice_wrapper, pattern="^more_practice_"))
+    app.add_handler(CallbackQueryHandler(handle_next_day_wrapper, pattern="^next_day_"))
     
     # Text handler
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_wrapper))
