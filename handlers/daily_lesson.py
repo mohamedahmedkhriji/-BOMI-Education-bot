@@ -48,14 +48,14 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
         else:
             theory = ai.generate_theory_explanation(topic, lang)
         
-        questions = ai.generate_practice_questions(topic, lang, count=3)
+        questions = ai.generate_practice_questions(topic, lang, count=5)
         
         # Validate questions before proceeding
         if not questions:
             await update.message.reply_text("Error: Could not generate questions. Please try again.")
             return
         
-        if len(questions) < 3:
+        if len(questions) < 5:
             await update.message.reply_text(f"Error: Only generated {len(questions)} questions. Please try again.")
             return
         
@@ -152,7 +152,7 @@ async def show_task(message, user_id, user_sessions):
     question = questions[current_task]
     task_num = current_task + 1
     
-    text = f"✍️ Task {task_num}/3:\n\n{question['text']}\n\nA) {question['options'][0]}\nB) {question['options'][1]}\nC) {question['options'][2]}\nD) {question['options'][3]}"
+    text = f"✍️ Task {task_num}/5:\n\n{question['text']}\n\nA) {question['options'][0]}\nB) {question['options'][1]}\nC) {question['options'][2]}\nD) {question['options'][3]}"
     keyboard = [[InlineKeyboardButton(opt, callback_data=f"task_ans_{opt}_{user_id}")] for opt in ['A', 'B', 'C', 'D']]
     await message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -350,9 +350,9 @@ async def handle_more_practice(update: Update, context: ContextTypes.DEFAULT_TYP
     ai = AIContentGenerator()
     
     try:
-        questions = ai.generate_practice_questions(topic, lang, count=3)
+        questions = ai.generate_practice_questions(topic, lang, count=5)
         
-        if not questions or len(questions) < 3:
+        if not questions or len(questions) < 5:
             await query.message.reply_text("Error generating questions. Please try again.")
             return
         
