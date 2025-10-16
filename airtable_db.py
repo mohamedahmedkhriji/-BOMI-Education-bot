@@ -84,9 +84,18 @@ class AirtableDB:
             print(f"Update user error: {response.status_code} - {response.text}")
         return response.json()
     
-    def create_quiz_session(self, user_id, questions):
+    def create_quiz_session(self, user_id, questions, lesson_day=None):
         """Create quiz questions in Airtable"""
         session_id = f"quiz_{user_id}_{int(datetime.now().timestamp())}"
+        
+        # Update user with active quiz session
+        user = self.get_user(user_id)
+        if user:
+            self.update_user(user['id'], {
+                'Active Quiz Session ID': session_id,
+                'Mode': 'quiz_answer',
+                'Expected': 'quiz_answer'
+            })
         
         for i, question in enumerate(questions):
             data = {
@@ -94,14 +103,18 @@ class AirtableDB:
                     "Quiz ID": f"{session_id}_q{i+1}",
                     "Quiz Session ID": session_id,
                     "User ID": str(user_id),
-                    "Question Order": i + 1,
+                    "Question Order": str(i + 1),
                     "Question": question['text'],
                     "Correct Answer": question['correct'],
                     "Question State": "asked",
                     "Question Sent At": datetime.now().isoformat(),
-                    "Exam Status": "In Progress"
+                    "Exam Status": "In Progress",
+                    "Exam Date": datetime.now().isoformat()
                 }
             }
+            
+            if lesson_day:
+                data["fields"]["Lesson Day"] = str(lesson_day)
             
             requests.post(
                 f"{self.base_url}/tblLYqC470dcUjytq",
@@ -111,9 +124,8 @@ class AirtableDB:
         
         return session_id
     
-    def update_quiz_answer(self, quiz_id, user_answer, score, ai_feedback):
+    def update_quiz_answer(self, quiz_id, user_answer, score, ai_feedback, is_last=False):
         """Update quiz with user answer"""
-        # Find quiz record
         params = {"filterByFormula": f"{{Quiz ID}} = '{quiz_id}'"}
         response = requests.get(
             f"{self.base_url}/tblLYqC470dcUjytq",
@@ -124,20 +136,47 @@ class AirtableDB:
         records = response.json().get('records', [])
         if records:
             record_id = records[0]['id']
+            fields = records[0].get('fields', {})
+            
             data = {
                 "fields": {
                     "User Answer": user_answer,
-                    "Score (Per Question)": score,
+                    "Answer Normalized": user_answer.upper(),
+                    "Score (Per Question)": str(score),
                     "AI Feedback": ai_feedback,
                     "Question State": "answered",
                     "Answer Received At": datetime.now().isoformat()
                 }
             }
             
+            if is_last:
+                data["fields"]["Exam Status"] = "Completed"
+            
             requests.patch(
                 f"{self.base_url}/tblLYqC470dcUjytq/{record_id}",
                 headers=self.headers,
                 json=data
+            )
+    
+    def complete_quiz_session(self, session_id, total_score):
+        """Mark quiz session as completed"""
+        params = {"filterByFormula": f"{{Quiz Session ID}} = '{session_id}'"}
+        response = requests.get(
+            f"{self.base_url}/tblLYqC470dcUjytq",
+            headers=self.headers,
+            params=params
+        )
+        
+        records = response.json().get('records', [])
+        for record in records:
+            record_id = record['id']
+            requests.patch(
+                f"{self.base_url}/tblLYqC470dcUjytq/{record_id}",
+                headers=self.headers,
+                json={"fields": {
+                    "Exam Status": "Completed",
+                    "Test Session Total": str(total_score)
+                }}
             )
     
     def create_lesson(self, user_id, day, topic, theory, tasks):

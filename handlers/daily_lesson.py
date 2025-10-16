@@ -43,6 +43,9 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
         
         questions = ai.generate_practice_questions(topic, lang, count=3)
         
+        # Save practice questions to Quizzes table
+        practice_session_id = db.create_quiz_session(user_id, questions, lesson_day=current_day)
+        
         tasks = [f"{q['text']}\nA) {q['options'][0]}\nB) {q['options'][1]}\nC) {q['options'][2]}\nD) {q['options'][3]}" for q in questions]
         
         lesson_data = {
@@ -125,12 +128,29 @@ async def handle_task_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
     question = session['questions'][current_task]
     is_correct = answer == question['correct']
     
+    # Generate AI feedback for wrong answers
+    ai_feedback = ""
+    if not is_correct:
+        from ai_content import AIContentGenerator
+        ai = AIContentGenerator()
+        feedback_prompt = f"Explain why {question['correct']} is correct for: {question['text']}"
+        try:
+            ai_feedback = ai.generate_theory_explanation(feedback_prompt, session.get('lang', 'en'))[:300]
+        except:
+            ai_feedback = f"Correct answer is {question['correct']}"
+    
     session['answers'].append({
         'answer': answer,
         'correct': question['correct'],
         'is_correct': is_correct,
         'question': question['text']
     })
+    
+    # Update Quizzes table
+    practice_session_id = f"quiz_{user_id}_{session['day']}"
+    quiz_id = f"{practice_session_id}_q{current_task + 1}"
+    is_last = (current_task + 1) >= len(session['questions'])
+    db.update_quiz_answer(quiz_id, answer, 1 if is_correct else 0, ai_feedback, is_last)
     
     task_num = current_task + 1
     task_field = f"Task {task_num} Answer"

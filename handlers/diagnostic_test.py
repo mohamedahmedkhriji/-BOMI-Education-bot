@@ -97,6 +97,18 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE, db, 
         
         question = session['questions'][current_q]
         is_correct = answer == question['correct']
+        
+        # Generate AI feedback for wrong answers
+        ai_feedback = ""
+        if not is_correct:
+            from ai_content import AIContentGenerator
+            ai = AIContentGenerator()
+            feedback_prompt = f"Explain why {question['correct']} is correct for: {question['text']}"
+            try:
+                ai_feedback = ai.generate_theory_explanation(feedback_prompt, 'en')[:300]
+            except:
+                ai_feedback = f"Correct answer is {question['correct']}"
+        
         session['answers'].append({
             'answer': answer,
             'correct': question['correct'],
@@ -105,7 +117,8 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE, db, 
         })
         
         quiz_id = f"{session['session_id']}_q{current_q + 1}"
-        db.update_quiz_answer(quiz_id, answer, 1 if is_correct else 0, "")
+        is_last = (current_q + 1) >= len(session['questions'])
+        db.update_quiz_answer(quiz_id, answer, 1 if is_correct else 0, ai_feedback, is_last)
         
         session['current_question'] += 1
         
@@ -145,6 +158,9 @@ async def show_results(query, user_id, user_sessions, db):
     else:
         target = "120-140"
     
+    # Complete quiz session in Quizzes table
+    db.complete_quiz_session(session['session_id'], percentage)
+    
     user = db.get_user(user_id)
     if user:
         db.update_user(user['id'], {
@@ -155,6 +171,7 @@ async def show_results(query, user_id, user_sessions, db):
             'Current Day': '1',
             'Mode': 'idle',
             'Expected': 'none',
+            'Active Quiz Session ID': '',
             'Last Active': datetime.now().isoformat(),
             'Level': 'Beginner' if percentage < 40 else 'Intermediate' if percentage < 75 else 'Advanced'
         })
