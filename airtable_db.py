@@ -63,7 +63,7 @@ class AirtableDB:
     
     def get_all_active_users(self):
         """Get all users with In Progress status for reminders"""
-        params = {"filterByFormula": "{{Learning Status}} = 'In Progress'"}
+        params = {"filterByFormula": "{Learning Status} = 'In Progress'"}
         response = requests.get(
             f"{self.base_url}/tblV9TLAFPX5JqcAP",
             headers=self.headers,
