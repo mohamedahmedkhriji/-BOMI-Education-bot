@@ -61,6 +61,17 @@ class AirtableDB:
         data = response.json()
         return data.get('records', [{}])[0] if data.get('records') else None
     
+    def get_all_active_users(self):
+        """Get all users with In Progress status for reminders"""
+        params = {"filterByFormula": "{{Learning Status}} = 'In Progress'"}
+        response = requests.get(
+            f"{self.base_url}/tblV9TLAFPX5JqcAP",
+            headers=self.headers,
+            params=params
+        )
+        data = response.json()
+        return data.get('records', [])
+    
     def delete_user(self, user_id):
         """Delete user from Airtable"""
         user = self.get_user(user_id)

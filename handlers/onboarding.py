@@ -97,7 +97,20 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE, db, us
         if re.match(r'^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$', text):
             user = db.get_user(user_id)
             if user:
+                user_data = user.get('fields', {})
+                chat_id = user_data.get('Telegram Chat ID')
+                current_day = user_data.get('Current Day', '1')
+                
                 db.update_user(user['id'], {'Timezone': text, 'Learning Status': 'In Progress', 'Last Active': datetime.now().isoformat()})
+                
+                # Schedule reminder
+                try:
+                    from bot_new import reminder_scheduler
+                    if reminder_scheduler:
+                        reminder_scheduler.schedule_user_reminder(user_id, chat_id, text, lang, current_day)
+                except Exception as e:
+                    print(f"Error scheduling reminder: {e}")
+            
             user_sessions.pop(user_id, None)
             msg = f"✅ {text} da eslatma o'rnatildi!\n\n/daily_lesson buyrug'ini ishlating." if lang == 'uz' else f"✅ Reminder set for {text}!\n\nUse /daily_lesson to begin."
             await update.message.reply_text(msg)

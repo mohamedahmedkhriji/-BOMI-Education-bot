@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 from airtable_db import AirtableDB
+from reminder_scheduler import ReminderScheduler
 
 # Import handlers
 from handlers.start import start
@@ -12,6 +13,7 @@ from handlers.daily_lesson import daily_lesson_command, daily_lesson_callback, h
 
 load_dotenv()
 db = AirtableDB()
+reminder_scheduler = None
 
 user_sessions = {}
 processing = set()
@@ -39,7 +41,7 @@ async def start_now_wrapper(update, context):
     await start_now(update, context, db)
 
 async def set_reminder_wrapper(update, context):
-    await set_reminder(update, context, user_sessions)
+    await set_reminder(update, context, user_sessions, db)
 
 async def daily_lesson_command_wrapper(update, context):
     await daily_lesson_command(update, context, db, user_sessions)
@@ -59,9 +61,16 @@ async def handle_next_day_wrapper(update, context):
 async def handle_text_wrapper(update, context):
     await handle_text(update, context, db, user_sessions)
 
+async def post_init(application):
+    """Initialize scheduler after bot starts"""
+    global reminder_scheduler
+    reminder_scheduler = ReminderScheduler(application.bot, db)
+    await reminder_scheduler.refresh_all_reminders()
+    print("Reminders initialized")
+
 def main():
     token = os.getenv('BOT_TOKEN')
-    app = Application.builder().token(token).build()
+    app = Application.builder().token(token).post_init(post_init).build()
     
     # Command handlers
     app.add_handler(CommandHandler('start', start_wrapper))

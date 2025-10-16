@@ -50,11 +50,18 @@ async def start_now(update: Update, context: ContextTypes.DEFAULT_TYPE, db):
         
         await query.message.reply_text(msg)
 
-async def set_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE, user_sessions):
+async def set_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE, user_sessions, db=None):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
-    await query.message.reply_text("⏰ Send time (HH:MM)\nExample: 18:00")
+    
+    user = db.get_user(user_id) if db else None
+    lang = user.get('fields', {}).get('Language', 'en') if user else 'en'
+    
+    msg = "⏰ Vaqtni yuboring (HH:MM)\nMasalan: 18:00" if lang == 'uz' else "⏰ Send time (HH:MM)\nExample: 18:00"
+    await query.message.reply_text(msg)
+    
     if user_id not in user_sessions:
         user_sessions[user_id] = {}
     user_sessions[user_id]['waiting_for_time'] = True
+    user_sessions[user_id]['lang'] = lang
