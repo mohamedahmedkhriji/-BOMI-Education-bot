@@ -190,3 +190,14 @@ class AirtableDB:
             'lessons': lessons_response.json().get('records', []),
             'quizzes': quizzes_response.json().get('records', [])
         }
+    
+    def get_course(self, topic, level, language):
+        """Get course content from Courses table"""
+        params = {"filterByFormula": f"AND({{Topic}} = '{topic}', {{Level}} = '{level}', {{Language}} = '{language}')"}
+        response = requests.get(
+            f"{self.base_url}/tblmY3mLULswP7JoU",
+            headers=self.headers,
+            params=params
+        )
+        data = response.json()
+        return data.get('records', [{}])[0] if data.get('records') else None

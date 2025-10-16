@@ -33,7 +33,14 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
     ai = AIContentGenerator()
     
     try:
-        theory = ai.generate_theory_explanation(topic, lang)
+        user_level = user_data.get('Level', 'Beginner')
+        course = db.get_course(topic, user_level, lang)
+        
+        if course:
+            theory = course.get('fields', {}).get('Theory Content', '')
+        else:
+            theory = ai.generate_theory_explanation(topic, lang)
+        
         questions = ai.generate_practice_questions(topic, lang, count=3)
         
         tasks = [f"{q['text']}\nA) {q['options'][0]}\nB) {q['options'][1]}\nC) {q['options'][2]}\nD) {q['options'][3]}" for q in questions]
