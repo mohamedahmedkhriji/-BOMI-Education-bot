@@ -240,3 +240,43 @@ class AirtableDB:
         )
         data = response.json()
         return data.get('records', [{}])[0] if data.get('records') else None
+    
+    def get_lesson_with_details(self, user_id, day):
+        """Get lesson with linked User, Course, and Quiz data"""
+        # Get lesson
+        params = {"filterByFormula": f"AND({{User ID}} = '{user_id}', {{Day}} = '{day}')"}
+        lesson_response = requests.get(
+            f"{self.base_url}/tblInFtIh5fZt59g4",
+            headers=self.headers,
+            params=params
+        )
+        lesson = lesson_response.json().get('records', [{}])[0] if lesson_response.json().get('records') else None
+        
+        if not lesson:
+            return None
+        
+        lesson_fields = lesson.get('fields', {})
+        topic = lesson_fields.get('Topic')
+        
+        # Get user
+        user = self.get_user(user_id)
+        user_fields = user.get('fields', {}) if user else {}
+        
+        # Get course
+        course = self.get_course(topic, user_fields.get('Level', 'Beginner'), user_fields.get('Language', 'en'))
+        
+        # Get quizzes for this lesson
+        quiz_params = {"filterByFormula": f"AND({{User ID}} = '{user_id}', {{Lesson Day}} = '{day}')"}
+        quiz_response = requests.get(
+            f"{self.base_url}/tblLYqC470dcUjytq",
+            headers=self.headers,
+            params=quiz_params
+        )
+        quizzes = quiz_response.json().get('records', [])
+        
+        return {
+            'lesson': lesson,
+            'user': user,
+            'course': course,
+            'quizzes': quizzes
+        }

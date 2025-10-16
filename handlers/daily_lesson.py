@@ -36,8 +36,10 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
         user_level = user_data.get('Level', 'Beginner')
         course = db.get_course(topic, user_level, lang)
         
+        course_id = ""
         if course:
             theory = course.get('fields', {}).get('Theory Content', '')
+            course_id = str(course.get('fields', {}).get('Course ID', ''))
         else:
             theory = ai.generate_theory_explanation(topic, lang)
         
@@ -64,6 +66,10 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
             }
         }
         
+        # Add Course ID if available
+        if course_id:
+            lesson_data["fields"]["Lesson ID"] = f"lesson_day{current_day}_course{course_id}_user{user_id}"
+        
         response = requests.post(
             f"https://api.airtable.com/v0/{db.base_id}/tblInFtIh5fZt59g4",
             headers=db.headers,
@@ -73,6 +79,14 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
         created_record = response.json()
         lesson_record_id = created_record.get('id')
         
+        # Update Users table with Active Lesson ID
+        if user:
+            db.update_user(user['id'], {
+                'Active Lesson ID': lesson_record_id,
+                'Mode': 'lesson_task',
+                'Expected': 'lesson_task'
+            })
+        
         user_sessions[user_id] = {
             'lesson_record_id': lesson_record_id,
             'day': current_day,
@@ -80,7 +94,8 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
             'questions': questions,
             'current_task': 0,
             'answers': [],
-            'lang': lang
+            'lang': lang,
+            'practice_session_id': practice_session_id
         }
         
         theory_msg = f"📚 Day {current_day}: {topic}\n\n{theory[:500]}...\n\n" if lang == 'en' else f"📚 {current_day}-kun: {topic}\n\n{theory[:500]}...\n\n"
@@ -147,7 +162,7 @@ async def handle_task_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
     })
     
     # Update Quizzes table
-    practice_session_id = f"quiz_{user_id}_{session['day']}"
+    practice_session_id = session.get('practice_session_id', f"quiz_{user_id}_{session['day']}")
     quiz_id = f"{practice_session_id}_q{current_task + 1}"
     is_last = (current_task + 1) >= len(session['questions'])
     db.update_quiz_answer(quiz_id, answer, 1 if is_correct else 0, ai_feedback, is_last)
@@ -212,10 +227,23 @@ async def complete_lesson(message, user_id, user_sessions, db):
             json=update_data
         )
     
+    # Complete quiz session for practice questions
+    if 'practice_session_id' in session:
+        db.complete_quiz_session(session['practice_session_id'], score)
+    
     user = db.get_user(user_id)
     if user:
         next_day = session['day'] + 1
-        db.update_user(user['id'], {'Current Day': str(next_day)})
+        lessons_completed = int(user.get('fields', {}).get('Lessons Completed', '0') or 0) + 1
+        
+        db.update_user(user['id'], {
+            'Current Day': str(next_day),
+            'Lessons Completed': str(lessons_completed),
+            'Active Lesson ID': '',
+            'Mode': 'idle',
+            'Expected': 'none',
+            'Last Active': datetime.now().isoformat()
+        })
     
     result_msg = f"🎉 Day {session['day']} completed!\n\n📊 Score: {correct}/{total} ({score:.0f}%)\n\n💬 {ai_feedback}" if lang == 'en' else f"🎉 {session['day']}-kun yakunlandi!\n\n📊 Ball: {correct}/{total} ({score:.0f}%)\n\n💬 {ai_feedback}"
     await message.reply_text(result_msg)
