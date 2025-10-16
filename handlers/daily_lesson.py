@@ -86,6 +86,8 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
                 "Task 1": tasks[0][:1000] if len(tasks) > 0 else "",
                 "Task 2": tasks[1][:1000] if len(tasks) > 1 else "",
                 "Task 3": tasks[2][:1000] if len(tasks) > 2 else "",
+                "Task 4": tasks[3][:1000] if len(tasks) > 3 else "",
+                "Task 5": tasks[4][:1000] if len(tasks) > 4 else "",
                 "Lesson Status": "In Progress",
                 "Expected Task": "task_1",
                 "Current Task Index": "1",
