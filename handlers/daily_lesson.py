@@ -6,6 +6,11 @@ from datetime import datetime
 
 async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYPE, db, user_sessions):
     user_id = update.effective_user.id
+    
+    # Prevent duplicate lesson generation
+    if user_id in user_sessions:
+        return
+    
     user = db.get_user(user_id)
     
     if not user:
@@ -54,10 +59,23 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text(f"Error: Only generated {len(questions)} questions. Please try again.")
             return
         
-        # Save practice questions to Quizzes table
-        practice_session_id = db.create_quiz_session(user_id, questions, lesson_day=current_day)
+        # Validate each question has required fields
+        for i, q in enumerate(questions):
+            if not all(key in q for key in ['text', 'options', 'correct']):
+                await update.message.reply_text(f"Error: Invalid question format. Please try again.")
+                return
+            if len(q.get('options', [])) != 4:
+                await update.message.reply_text(f"Error: Question {i+1} missing options. Please try again.")
+                return
         
         tasks = [f"{q['text']}\nA) {q['options'][0]}\nB) {q['options'][1]}\nC) {q['options'][2]}\nD) {q['options'][3]}" for q in questions]
+        
+        # Save practice questions to Quizzes table AFTER validation
+        practice_session_id = db.create_quiz_session(user_id, questions, lesson_day=current_day)
+        
+        if not practice_session_id:
+            await update.message.reply_text("Error: Could not create quiz session. Please try again.")
+            return
         
         lesson_data = {
             "fields": {
@@ -126,7 +144,9 @@ async def show_task(message, user_id, user_sessions):
     lang = session.get('lang', 'en')
     
     if current_task >= len(questions):
-        await complete_lesson(message, user_id, user_sessions, None)
+        from airtable_db import AirtableDB
+        db = AirtableDB()
+        await complete_lesson(message, user_id, user_sessions, db)
         return
     
     question = questions[current_task]
@@ -203,8 +223,16 @@ async def handle_task_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
         await query.message.reply_text(feedback)
     
     session['current_task'] += 1
-    await asyncio.sleep(0.5)
-    await show_task(query.message, user_id, user_sessions)
+    
+    # Check if this was the last task
+    if session['current_task'] >= len(session['questions']):
+        await asyncio.sleep(0.5)
+        from airtable_db import AirtableDB
+        db = AirtableDB()
+        await complete_lesson(query.message, user_id, user_sessions, db)
+    else:
+        await asyncio.sleep(0.5)
+        await show_task(query.message, user_id, user_sessions)
 
 async def complete_lesson(message, user_id, user_sessions, db):
     session = user_sessions.get(user_id)

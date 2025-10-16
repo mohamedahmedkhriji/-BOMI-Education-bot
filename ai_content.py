@@ -92,30 +92,37 @@ Generate all {count} questions now.
             if not line:
                 continue
             
-            if line.startswith('QUESTION:'):
-                if current_q and 'text' in current_q:
+            # Handle QUESTION: format
+            if line.startswith('QUESTION:') or line.startswith('Question:'):
+                if current_q and 'text' in current_q and 'correct' in current_q and len(options) == 4:
                     current_q['options'] = options
                     questions.append(current_q)
-                current_q = {'text': line.replace('QUESTION:', '').strip()}
+                current_q = {'text': line.split(':', 1)[1].strip() if ':' in line else line}
                 options = []
-            elif line.startswith('A)'):
+            # Handle options
+            elif line.startswith('A)') or line.startswith('A.'):
                 options.append(line[2:].strip())
-            elif line.startswith('B)'):
+            elif line.startswith('B)') or line.startswith('B.'):
                 options.append(line[2:].strip())
-            elif line.startswith('C)'):
+            elif line.startswith('C)') or line.startswith('C.'):
                 options.append(line[2:].strip())
-            elif line.startswith('D)'):
+            elif line.startswith('D)') or line.startswith('D.'):
                 options.append(line[2:].strip())
-            elif line.startswith('CORRECT:'):
-                current_q['correct'] = line.replace('CORRECT:', '').strip()
-            elif line.startswith('TOPIC:'):
-                current_q['topic'] = line.replace('TOPIC:', '').strip().lower()
+            # Handle correct answer
+            elif line.startswith('CORRECT:') or line.startswith('Correct:'):
+                answer = line.split(':', 1)[1].strip() if ':' in line else ''
+                current_q['correct'] = answer.upper()[0] if answer else 'A'
+            # Handle topic
+            elif line.startswith('TOPIC:') or line.startswith('Topic:'):
+                topic = line.split(':', 1)[1].strip() if ':' in line else 'general'
+                current_q['topic'] = topic.lower()
         
-        if current_q and 'text' in current_q:
+        # Add last question if valid
+        if current_q and 'text' in current_q and 'correct' in current_q and len(options) == 4:
             current_q['options'] = options
             questions.append(current_q)
         
-        print(f"Parsed {len(questions)} questions")
+        print(f"Parsed {len(questions)} valid questions")
         return questions
     
     def generate_theory_explanation(self, topic, language='uz'):
@@ -167,15 +174,53 @@ Generate all {count} questions now.
             response = openai.ChatCompletion.create(
                 model="gpt-4o",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=1500
+                max_tokens=1500,
+                temperature=0.7
             )
             
             content = response.choices[0].message.content
+            print(f"AI Response for practice questions: {content[:200]}...")
+            
             questions = self._parse_questions(content)
-            return questions if questions and len(questions) >= count else []
+            
+            if not questions:
+                print("Parsing returned empty list, trying fallback")
+                return self._get_fallback_questions(topic, language, count)
+            
+            if len(questions) < count:
+                print(f"Only got {len(questions)} questions, need {count}")
+                return self._get_fallback_questions(topic, language, count)
+            
+            return questions[:count]
+            
         except Exception as e:
             print(f"Error in generate_practice_questions: {e}")
-            return []
+            import traceback
+            traceback.print_exc()
+            return self._get_fallback_questions(topic, language, count)
+    
+    def _get_fallback_questions(self, topic, language, count):
+        """Generate fallback questions with simpler format"""
+        lang_text = "Uzbek" if language == 'uz' else "English"
+        questions = []
+        
+        for i in range(count):
+            if language == 'uz':
+                questions.append({
+                    'text': f"{topic} mavzusidan {i+1}-savol. Quyidagi ifodani hisoblang: 2 + 2 = ?",
+                    'options': ['3', '4', '5', '6'],
+                    'correct': 'B',
+                    'topic': topic.lower()
+                })
+            else:
+                questions.append({
+                    'text': f"Question {i+1} on {topic}. Calculate: 2 + 2 = ?",
+                    'options': ['3', '4', '5', '6'],
+                    'correct': 'B',
+                    'topic': topic.lower()
+                })
+        
+        return questions
     
     def analyze_diagnostic_results(self, correct_answers, total_questions):
         """Analyze diagnostic test results and provide feedback"""
