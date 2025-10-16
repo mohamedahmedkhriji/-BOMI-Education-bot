@@ -312,7 +312,17 @@ async def complete_lesson(message, user_id, user_sessions, db):
 async def daily_lesson_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, db, user_sessions):
     query = update.callback_query
     await query.answer()
-    await daily_lesson_command(update, context, db, user_sessions)
+    
+    # Create a modified update object with message from callback query
+    class CallbackUpdate:
+        def __init__(self, query_update):
+            self.callback_query = query_update.callback_query
+            self.message = query_update.callback_query.message
+            self.effective_user = query_update.effective_user
+            self.effective_chat = query_update.effective_chat
+    
+    modified_update = CallbackUpdate(update)
+    await daily_lesson_command(modified_update, context, db, user_sessions)
 
 
 async def handle_more_practice(update: Update, context: ContextTypes.DEFAULT_TYPE, db, user_sessions):
