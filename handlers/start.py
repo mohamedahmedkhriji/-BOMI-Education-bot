@@ -2,7 +2,9 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from datetime import datetime
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, db, user_sessions):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db = context.bot_data['db']
+    user_sessions = context.bot_data['user_sessions']
     user_id = update.effective_user.id
     
     if user_id in user_sessions:

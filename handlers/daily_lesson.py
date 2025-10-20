@@ -4,7 +4,9 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from datetime import datetime
 
-async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYPE, db, user_sessions):
+async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db = context.bot_data['db']
+    user_sessions = context.bot_data['user_sessions']
     user_id = update.effective_user.id
     
     # Prevent duplicate lesson generation
@@ -158,7 +160,9 @@ async def show_task(message, user_id, user_sessions):
     keyboard = [[InlineKeyboardButton(opt, callback_data=f"task_ans_{opt}_{user_id}")] for opt in ['A', 'B', 'C', 'D']]
     await message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def handle_task_answer(update: Update, context: ContextTypes.DEFAULT_TYPE, db, user_sessions):
+async def handle_task_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db = context.bot_data['db']
+    user_sessions = context.bot_data['user_sessions']
     query = update.callback_query
     await query.answer()
     
@@ -311,7 +315,7 @@ async def complete_lesson(message, user_id, user_sessions, db):
         
         await message.reply_text(result_msg, reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def daily_lesson_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, db, user_sessions):
+async def daily_lesson_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
@@ -324,10 +328,12 @@ async def daily_lesson_callback(update: Update, context: ContextTypes.DEFAULT_TY
             self.effective_chat = query_update.effective_chat
     
     modified_update = CallbackUpdate(update)
-    await daily_lesson_command(modified_update, context, db, user_sessions)
+    await daily_lesson_command(modified_update, context)
 
 
-async def handle_more_practice(update: Update, context: ContextTypes.DEFAULT_TYPE, db, user_sessions):
+async def handle_more_practice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db = context.bot_data['db']
+    user_sessions = context.bot_data['user_sessions']
     query = update.callback_query
     await query.answer()
     
@@ -377,7 +383,9 @@ async def handle_more_practice(update: Update, context: ContextTypes.DEFAULT_TYP
         print(f"Error generating practice: {e}")
         await query.message.reply_text(f"Error: {str(e)}")
 
-async def handle_next_day(update: Update, context: ContextTypes.DEFAULT_TYPE, db, user_sessions):
+async def handle_next_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db = context.bot_data['db']
+    user_sessions = context.bot_data['user_sessions']
     query = update.callback_query
     await query.answer()
     

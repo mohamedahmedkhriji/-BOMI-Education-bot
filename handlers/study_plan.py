@@ -2,7 +2,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from datetime import datetime
 
-async def get_study_plan(update: Update, context: ContextTypes.DEFAULT_TYPE, db, user_sessions):
+async def get_study_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db = context.bot_data['db']
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -34,7 +35,8 @@ async def get_study_plan(update: Update, context: ContextTypes.DEFAULT_TYPE, db,
     keyboard = [[InlineKeyboardButton(btn_now, callback_data="start_now")], [InlineKeyboardButton(btn_later, callback_data="set_reminder")]]
     await query.message.reply_text(plan_text, reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def start_now(update: Update, context: ContextTypes.DEFAULT_TYPE, db):
+async def start_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db = context.bot_data['db']
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -50,12 +52,14 @@ async def start_now(update: Update, context: ContextTypes.DEFAULT_TYPE, db):
         
         await query.message.reply_text(msg)
 
-async def set_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE, user_sessions, db=None):
+async def set_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db = context.bot_data['db']
+    user_sessions = context.bot_data['user_sessions']
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
     
-    user = db.get_user(user_id) if db else None
+    user = db.get_user(user_id)
     lang = user.get('fields', {}).get('Language', 'en') if user else 'en'
     
     msg = "⏰ Vaqtni yuboring (HH:MM)\nMasalan: 18:00" if lang == 'uz' else "⏰ Send time (HH:MM)\nExample: 18:00"

@@ -2,7 +2,9 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from datetime import datetime
 
-async def language_selected(update: Update, context: ContextTypes.DEFAULT_TYPE, db, user_sessions):
+async def language_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db = context.bot_data['db']
+    user_sessions = context.bot_data['user_sessions']
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -20,7 +22,9 @@ async def language_selected(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     await query.message.reply_text(text)
     user_sessions[user_id] = {'step': 'waiting_name', 'lang': lang}
 
-async def level_selected(update: Update, context: ContextTypes.DEFAULT_TYPE, db, user_sessions):
+async def level_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db = context.bot_data['db']
+    user_sessions = context.bot_data['user_sessions']
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -44,7 +48,9 @@ async def level_selected(update: Update, context: ContextTypes.DEFAULT_TYPE, db,
     await query.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
     user_sessions.pop(user_id, None)
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE, db, user_sessions):
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db = context.bot_data['db']
+    user_sessions = context.bot_data['user_sessions']
     user_id = update.effective_user.id
     session = user_sessions.get(user_id, {})
     text = update.message.text.strip()
@@ -105,7 +111,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE, db, us
                 
                 # Schedule reminder
                 try:
-                    from bot_new import reminder_scheduler
+                    reminder_scheduler = context.bot_data.get('reminder_scheduler')
                     if reminder_scheduler:
                         reminder_scheduler.schedule_user_reminder(user_id, chat_id, text, lang, current_day)
                 except Exception as e:

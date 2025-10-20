@@ -3,7 +3,10 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from datetime import datetime
 
-async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE, db, user_sessions, processing):
+async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db = context.bot_data['db']
+    user_sessions = context.bot_data['user_sessions']
+    processing = context.bot_data['processing']
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -73,7 +76,10 @@ async def show_question(query, user_id, user_sessions, db):
     keyboard = [[InlineKeyboardButton(opt, callback_data=f"ans_{opt}_{user_id}")] for opt in ['A', 'B', 'C', 'D']]
     await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE, db, user_sessions, processing):
+async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db = context.bot_data['db']
+    user_sessions = context.bot_data['user_sessions']
+    processing = context.bot_data['processing']
     query = update.callback_query
     await query.answer()
     
