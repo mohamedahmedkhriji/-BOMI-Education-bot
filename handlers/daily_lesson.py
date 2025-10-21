@@ -28,6 +28,18 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
     
     current_day = int(user_data.get('Current Day', '1'))
     lang = user_data.get('Language', 'en')
+    
+    # Check if user completed 14-day program
+    if current_day > 14:
+        lessons_completed = user_data.get('Lessons Completed', '0')
+        test_score = user_data.get('Test Score', '0')
+        
+        msg_uz = f"🎉 Tabriklaymiz! 14 kunlik dasturni yakunladingiz!\n\n📊 Statistika:\n• Darslar: {lessons_completed}\n• Boshlang'ich ball: {test_score}%\n\n🏆 DTM imtihoniga tayyorsiz!\n\nOmad yor bo'lsin! 🚀"
+        msg_en = f"🎉 Congratulations! You've completed the 14-day program!\n\n📊 Stats:\n• Lessons: {lessons_completed}\n• Initial Score: {test_score}%\n\n🏆 You're ready for DTM exam!\n\nGood luck! 🚀"
+        
+        await update.message.reply_text(msg_uz + "\n\n" + msg_en)
+        return
+    
     weak_topics = user_data.get('Weak Topics', '').split(', ') if user_data.get('Weak Topics') else []
     
     all_topics = weak_topics + ['Algebra', 'Geometry', 'Functions', 'Trigonometry', 'Logarithms', 'Equations', 'Inequalities', 'Sequences', 'Probability', 'Statistics', 'Derivatives', 'Integrals', 'Vectors', 'Complex Numbers']
@@ -300,14 +312,20 @@ async def complete_lesson(message, user_id, user_sessions, db):
             next_day = session['day'] + 1
             lessons_completed = int(user.get('fields', {}).get('Lessons Completed', '0') or 0) + 1
             
-            db.update_user(user['id'], {
+            update_fields = {
                 'Current Day': str(next_day),
                 'Lessons Completed': str(lessons_completed),
                 'Active Lesson ID': '',
                 'Mode': 'idle',
                 'Expected': 'none',
                 'Last Active': datetime.now().isoformat()
-            })
+            }
+            
+            # Mark as completed if finished 14 days
+            if next_day > 14:
+                update_fields['Learning Status'] = 'Completed'
+            
+            db.update_user(user['id'], update_fields)
     
     result_msg = f"🎉 Day {session['day']} completed!\n\n📊 Score: {correct}/{total} ({score:.0f}%)\n\n💬 {ai_feedback}" if lang == 'en' else f"🎉 {session['day']}-kun yakunlandi!\n\n📊 Ball: {correct}/{total} ({score:.0f}%)\n\n💬 {ai_feedback}"
     
