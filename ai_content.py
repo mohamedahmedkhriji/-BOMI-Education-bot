@@ -80,7 +80,10 @@ Generate all {count} questions now.
     
     def _parse_questions(self, content):
         """Parse AI response into structured question format"""
-        print(f"Parsing AI response (first 300 chars): {content[:300]}...")
+        try:
+            print(f"Parsing AI response (first 300 chars): {content[:300]}...")
+        except:
+            print("Parsing AI response (contains special characters)...")
         questions = []
         lines = content.strip().split('\n')
         
@@ -179,7 +182,10 @@ Generate all {count} questions now.
             )
             
             content = response.choices[0].message.content
-            print(f"AI Response for practice questions: {content[:200]}...")
+            try:
+                print(f"AI Response for practice questions: {content[:200]}...")
+            except:
+                print("AI Response received (contains special characters)")
             
             questions = self._parse_questions(content)
             

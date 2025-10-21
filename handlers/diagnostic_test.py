@@ -8,12 +8,16 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_sessions = context.bot_data['user_sessions']
     processing = context.bot_data['processing']
     query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
     
+    user_id = query.from_user.id
     key = f"test_{user_id}"
+    
+    # Prevent duplicate processing
     if key in processing or user_id in user_sessions:
+        await query.answer("Already processing...")
         return
+    
+    await query.answer()
     processing.add(key)
     
     try:
@@ -81,7 +85,11 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_sessions = context.bot_data['user_sessions']
     processing = context.bot_data['processing']
     query = update.callback_query
-    await query.answer()
+    
+    try:
+        await query.answer()
+    except Exception:
+        pass  # Ignore expired queries
     
     parts = query.data.split('_')
     answer = parts[1]
@@ -101,7 +109,13 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(session['answers']) > current_q:
             return
         
+        # Disable buttons by editing message
         question = session['questions'][current_q]
+        text = f"📝 Question {current_q + 1}/12:\n\n{question['text']}\n\nA) {question['options'][0]}\nB) {question['options'][1]}\nC) {question['options'][2]}\nD) {question['options'][3]}\n\n✅ Your answer: {answer}"
+        try:
+            await query.edit_message_text(text)
+        except:
+            pass
         is_correct = answer == question['correct']
         
         # Generate AI feedback for wrong answers
@@ -121,6 +135,8 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'is_correct': is_correct,
             'topic': question['topic']
         })
+        
+        question = session['questions'][current_q]
         
         quiz_id = f"{session['session_id']}_q{current_q + 1}"
         is_last = (current_q + 1) >= len(session['questions'])

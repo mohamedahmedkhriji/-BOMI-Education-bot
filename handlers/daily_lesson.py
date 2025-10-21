@@ -164,7 +164,11 @@ async def handle_task_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
     db = context.bot_data['db']
     user_sessions = context.bot_data['user_sessions']
     query = update.callback_query
-    await query.answer()
+    
+    try:
+        await query.answer()
+    except Exception:
+        pass  # Ignore expired queries
     
     parts = query.data.split('_')
     answer = parts[2]
@@ -176,6 +180,14 @@ async def handle_task_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     current_task = session['current_task']
     question = session['questions'][current_task]
+    
+    # Disable buttons by editing message
+    task_num = current_task + 1
+    text = f"✍️ Task {task_num}/5:\n\n{question['text']}\n\nA) {question['options'][0]}\nB) {question['options'][1]}\nC) {question['options'][2]}\nD) {question['options'][3]}\n\n✅ Your answer: {answer}"
+    try:
+        await query.edit_message_text(text)
+    except:
+        pass
     is_correct = answer == question['correct']
     
     # Generate AI feedback for wrong answers
@@ -397,5 +409,5 @@ async def handle_next_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lang = user.get('fields', {}).get('Language', 'en')
         current_day = int(user.get('fields', {}).get('Current Day', '1'))
         
-        msg = f"✅ Great! See you tomorrow for Day {current_day}! 🚀" if lang == 'en' else f"✅ Ajoyib! Ertaga {current_day}-kun uchun ko'rishguncha! 🚀"
+        msg = f"✅ Great! Ready for Day {current_day}?\n\nUse /daily_lesson anytime to start!" if lang == 'en' else f"✅ Ajoyib! {current_day}-kun uchun tayyormisiz?\n\nIstalgan vaqt /daily_lesson buyrug'ini yuboring!"
         await query.message.reply_text(msg)

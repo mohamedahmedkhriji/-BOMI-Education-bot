@@ -60,15 +60,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         
         else:
-            if lang == 'uz':
-                text = "Xush kelibsiz! 👋\n\nDiagnostik testni boshlang."
-                btn = "🧪 Testni boshlash"
-            else:
-                text = "Welcome back! 👋\n\nStart the diagnostic test."
-                btn = "🧪 Start Test"
-            
-            keyboard = [[InlineKeyboardButton(btn, callback_data="start_test")]]
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+            # Not Started status - should not happen for existing users
+            pass
     else:
         username = update.effective_user.username or "no_username"
         db.create_user(user_id=user_id, full_name="", username=username, chat_id=update.effective_chat.id)

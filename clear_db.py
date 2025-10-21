@@ -14,7 +14,7 @@ tables = {
     'Quizzes': 'tblLYqC470dcUjytq'
 }
 
-print("Clearing database...")
+print("Clearing database (keeping Courses table)...")
 
 for table_name, table_id in tables.items():
     url = f'https://api.airtable.com/v0/{BASE_ID}/{table_id}'
@@ -34,4 +34,4 @@ for table_name, table_id in tables.items():
     else:
         print(f"\nError fetching {table_name}: {response.text}")
 
-print("\n✅ Database cleared!")
+print("\nDatabase cleared successfully!")

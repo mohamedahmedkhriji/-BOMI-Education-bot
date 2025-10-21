@@ -8,6 +8,11 @@ async def language_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
+    
+    # Prevent duplicate processing
+    if user_id in user_sessions and user_sessions[user_id].get('step') == 'waiting_name':
+        return
+    
     lang = query.data.split('_')[1]
     
     user = db.get_user(user_id)
@@ -28,6 +33,12 @@ async def level_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
+    
+    # Check if already processed
+    user = db.get_user(user_id)
+    if user and user.get('fields', {}).get('Learning Status') == 'Onboarded':
+        return
+    
     level = query.data.split('_')[1].capitalize()
     
     session = user_sessions.get(user_id, {})
@@ -66,6 +77,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session['name'] = text
     
     elif session.get('step') == 'waiting_email':
+        # Validate email
+        if '@' not in text or '.' not in text.split('@')[-1]:
+            msg = "❌ Email noto'g'ri. Iltimos, to'g'ri email kiriting (masalan: example@gmail.com)" if lang == 'uz' else "❌ Invalid email. Please enter a valid email (e.g., example@gmail.com)"
+            await update.message.reply_text(msg)
+            return
+        
         user = db.get_user(user_id)
         if user:
             db.update_user(user['id'], {'Username': text, 'Last Active': datetime.now().isoformat()})
