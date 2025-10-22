@@ -36,13 +36,17 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         try:
             questions = ai.generate_diagnostic_questions_structured(level=level, language=lang, count=12)
+            print("AI generation completed")
         except Exception as e:
             print(f"AI Generation Error: {e}")
-            await query.message.reply_text(f"Error: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            await query.message.reply_text(f"Error generating questions: {str(e)}")
             processing.discard(key)
             return
         
-        if not questions:
+        if not questions or len(questions) == 0:
+            print(f"Questions is None or empty: {questions}")
             await query.message.reply_text("Could not generate enough questions. Please try again.")
             processing.discard(key)
             return

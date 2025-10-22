@@ -8,6 +8,22 @@ class AIContentGenerator:
     def __init__(self):
         openai.api_key = os.getenv('OPENAI_API_KEY')
     
+    def _clean_text(self, text):
+        """Remove markdown and LaTeX formatting from text"""
+        import re
+        # Remove LaTeX symbols
+        text = re.sub(r'\\\(|\\\)|\\\[|\\\]', '', text)
+        # Remove markdown headers
+        text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+        # Remove bold/italic markers
+        text = re.sub(r'\*\*|__', '', text)
+        text = re.sub(r'\*|_', '', text)
+        # Remove horizontal rules
+        text = re.sub(r'^---+$', '', text, flags=re.MULTILINE)
+        # Clean up multiple newlines
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        return text.strip()
+    
     def generate_diagnostic_questions(self, count=10, language='uz'):
         """Generate diagnostic math questions in specified language"""
         lang_text = "Uzbek" if language == 'uz' else "English"
@@ -51,6 +67,13 @@ Topics to cover (mix them):
 - Arithmetic operations
 - Logarithms
 
+IMPORTANT FORMATTING RULES:
+1. Use PLAIN TEXT only - NO LaTeX, NO special symbols
+2. Write clean math: 2x + 5 = 11 (NOT (2x+5)=11)
+3. Avoid unnecessary parentheses in answers
+4. Use simple notation: x^2 for x squared, sqrt(16) for square root
+5. Keep expressions clean and readable
+
 For EACH question, provide in this EXACT format:
 
 QUESTION: [question text]
@@ -75,15 +98,15 @@ Generate all {count} questions now.
             content = response.choices[0].message.content
             return self._parse_questions(content)
         except Exception as e:
-            print(f"Error generating questions: {e}")
+            try:
+                print(f"Error generating questions: {e}")
+            except:
+                print("Error generating questions (Unicode error in message)")
             return None
     
     def _parse_questions(self, content):
         """Parse AI response into structured question format"""
-        try:
-            print(f"Parsing AI response (first 300 chars): {content[:300]}...")
-        except:
-            print("Parsing AI response (contains special characters)...")
+        print("Parsing AI response...")
         questions = []
         lines = content.strip().split('\n')
         
@@ -125,7 +148,10 @@ Generate all {count} questions now.
             current_q['options'] = options
             questions.append(current_q)
         
-        print(f"Parsed {len(questions)} valid questions")
+        try:
+            print(f"Parsed {len(questions)} valid questions")
+        except:
+            print(f"Parsed questions successfully")
         return questions
     
     def generate_theory_explanation(self, topic, language='uz'):
@@ -151,7 +177,8 @@ Generate all {count} questions now.
             max_tokens=800
         )
         
-        return response.choices[0].message.content
+        content = response.choices[0].message.content
+        return self._clean_text(content)
     
     def generate_practice_questions(self, topic, language='uz', count=5):
         """Generate practice questions for specific topic"""
@@ -159,6 +186,13 @@ Generate all {count} questions now.
         
         prompt = f"""
 Generate exactly {count} multiple choice math questions about "{topic}" in {lang_text} for DTM exam.
+
+IMPORTANT FORMATTING RULES:
+1. Use PLAIN TEXT only - NO LaTeX, NO special symbols
+2. Write clean math: 2x + 5 = 11 (NOT (2x+5)=11)
+3. Avoid unnecessary parentheses in answers
+4. Use simple notation: x^2 for x squared, sqrt(16) for square root
+5. Keep expressions clean and readable
 
 For EACH question, provide in this EXACT format:
 
@@ -180,12 +214,9 @@ Generate all {count} questions now.
                 max_tokens=1500,
                 temperature=0.7
             )
-            
+              
             content = response.choices[0].message.content
-            try:
-                print(f"AI Response for practice questions: {content[:200]}...")
-            except:
-                print("AI Response received (contains special characters)")
+            print("AI Response received for practice questions")
             
             questions = self._parse_questions(content)
             

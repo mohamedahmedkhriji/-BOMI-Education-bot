@@ -141,7 +141,14 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
             'practice_session_id': practice_session_id
         }
         
-        theory_msg = f"📚 Day {current_day}: {topic}\n\n{theory[:500]}...\n\n" if lang == 'en' else f"📚 {current_day}-kun: {topic}\n\n{theory[:500]}...\n\n"
+        # Truncate theory cleanly at sentence boundary
+        theory_clean = theory[:1500] if len(theory) > 1500 else theory
+        if len(theory) > 1500:
+            last_period = theory_clean.rfind('.')
+            if last_period > 800:
+                theory_clean = theory_clean[:last_period + 1]
+        
+        theory_msg = f"📚 Day {current_day}: {topic}\n\n{theory_clean}" if lang == 'en' else f"📚 {current_day}-kun: {topic}\n\n{theory_clean}"
         await update.message.reply_text(theory_msg)
         
         await show_task(update.message, user_id, user_sessions)
@@ -281,8 +288,15 @@ async def complete_lesson(message, user_id, user_sessions, db):
     from ai_content import AIContentGenerator
     ai = AIContentGenerator()
     
-    feedback_prompt = f"User completed {total} tasks on {session['topic']}. Score: {correct}/{total}. Provide motivational feedback and tips in {'Uzbek' if lang == 'uz' else 'English'}."
-    ai_feedback = ai.generate_theory_explanation(feedback_prompt, lang)[:500]
+    feedback_prompt = f"User completed {total} tasks on {session['topic']}. Score: {correct}/{total}. Provide motivational feedback with 2-3 study tips in {'Uzbek' if lang == 'uz' else 'English'}."
+    ai_feedback = ai.generate_theory_explanation(feedback_prompt, lang)
+    
+    # Truncate cleanly at sentence boundary
+    if len(ai_feedback) > 800:
+        ai_feedback = ai_feedback[:800]
+        last_period = ai_feedback.rfind('.')
+        if last_period > 400:
+            ai_feedback = ai_feedback[:last_period + 1]
     
     record_id = session.get('lesson_record_id')
     if record_id:
