@@ -141,15 +141,15 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
             'practice_session_id': practice_session_id
         }
         
-        # Truncate theory cleanly at sentence boundary (max 600 chars)
-        theory_clean = theory[:600] if len(theory) > 600 else theory
-        if len(theory) > 600:
+        # Truncate theory cleanly at sentence boundary
+        theory_clean = theory[:1500] if len(theory) > 1500 else theory
+        if len(theory) > 1500:
             last_period = theory_clean.rfind('.')
-            if last_period > 300:
+            if last_period > 800:
                 theory_clean = theory_clean[:last_period + 1]
         
         theory_msg = f"📚 Day {current_day}: {topic}\n\n{theory_clean}" if lang == 'en' else f"📚 {current_day}-kun: {topic}\n\n{theory_clean}"
-        await update.message.reply_text(theory_msg, parse_mode=None)
+        await update.message.reply_text(theory_msg)
         
         await show_task(update.message, user_id, user_sessions)
         
@@ -209,6 +209,15 @@ async def handle_task_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
         pass
     is_correct = answer == question['correct']
     
+    # Detailed feedback with solution steps for wrong answers
+    ai_feedback = ""
+    if not is_correct:
+        correct_option = question['options'][ord(question['correct']) - ord('A')]
+        if session.get('lang') == 'uz':
+            ai_feedback = f"To'g'ri javob: {question['correct']}) {correct_option}\n\n📝 Yechim qadamlari:\n1. Masalani diqqat bilan o'qing\n2. Ma'lum va noma'lum qiymatlarni aniqlang\n3. Tegishli formulani qo'llang\n4. Hisoblashlarni bosqichma-bosqich bajaring\n5. Javobni tekshiring\n\n💡 Maslahat: Har bir qadamni yozib boring va formulalarni to'g'ri qo'llang."
+        else:
+            ai_feedback = f"Correct answer: {question['correct']}) {correct_option}\n\n📝 Solution steps:\n1. Read the problem carefully\n2. Identify known and unknown values\n3. Apply the appropriate formula\n4. Calculate step-by-step\n5. Verify your answer\n\n💡 Tip: Write down each step and apply formulas correctly."
+    
     session['answers'].append({
         'answer': answer,
         'correct': question['correct'],
@@ -220,9 +229,7 @@ async def handle_task_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
     practice_session_id = session.get('practice_session_id', f"quiz_{user_id}_{session['day']}")
     quiz_id = f"{practice_session_id}_q{current_task + 1}"
     is_last = (current_task + 1) >= len(session['questions'])
-    correct_option_text = question['options'][ord(question['correct']) - ord('A')] if question['correct'] in ['A', 'B', 'C', 'D'] else ""
-    feedback_text = f"Correct: {question['correct']}) {correct_option_text}" if not is_correct else "Correct!"
-    db.update_quiz_answer(quiz_id, answer, 1 if is_correct else 0, feedback_text, is_last)
+    db.update_quiz_answer(quiz_id, answer, 1 if is_correct else 0, ai_feedback, is_last)
     
     task_num = current_task + 1
     task_field = f"Task {task_num} Answer"
@@ -247,36 +254,28 @@ async def handle_task_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
         feedback = "✅ Correct!" if session.get('lang') == 'en' else "✅ To'g'ri!"
         await query.message.reply_text(feedback)
     else:
-        correct_option = question['options'][ord(question['correct']) - ord('A')] if question['correct'] in ['A', 'B', 'C', 'D'] else ""
-        feedback = f"❌ Wrong!\n\n✅ Correct answer: {question['correct']}) {correct_option}" if session.get('lang') == 'en' else f"❌ Noto'g'ri!\n\n✅ To'g'ri javob: {question['correct']}) {correct_option}"
+        feedback = f"❌ Wrong. Correct: {question['correct']}\n\n💡 {ai_feedback}" if session.get('lang') == 'en' else f"❌ Noto'g'ri. To'g'ri javob: {question['correct']}\n\n💡 {ai_feedback}"
         await query.message.reply_text(feedback)
     
     session['current_task'] += 1
     
-    print(f"Task completed. Current task now: {session['current_task']}/{len(session['questions'])}")
-    
     # Check if this was the last task
     if session['current_task'] >= len(session['questions']):
-        print("ALL TASKS COMPLETED! Calling complete_lesson...")
         await asyncio.sleep(0.5)
         from airtable_db import AirtableDB
         db = AirtableDB()
         await complete_lesson(query.message, user_id, user_sessions, db)
     else:
-        print(f"Showing next task: {session['current_task'] + 1}")
         await asyncio.sleep(0.5)
         await show_task(query.message, user_id, user_sessions)
 
 async def complete_lesson(message, user_id, user_sessions, db):
-    print(f"\n=== COMPLETE_LESSON CALLED for user {user_id} ===")
     session = user_sessions.get(user_id)
     if not session:
-        print("No session found!")
         return
     
     # Don't pop session yet if it's not extra practice
     is_extra = session.get('is_extra_practice', False)
-    print(f"Is extra practice: {is_extra}")
     
     answers = session['answers']
     correct = sum(1 for a in answers if a['is_correct'])
@@ -284,13 +283,25 @@ async def complete_lesson(message, user_id, user_sessions, db):
     score = (correct / total) * 100
     lang = session.get('lang', 'en')
     
-    # Simple feedback based on score
+    from ai_content import AIContentGenerator
+    ai = AIContentGenerator()
+    
+    # Generate simple, structured feedback
     if score >= 80:
-        ai_feedback = "Excellent work! Keep it up!" if lang == 'en' else "Ajoyib! Davom eting!"
+        if lang == 'uz':
+            ai_feedback = f"Ajoyib natija! {session['topic']} mavzusini yaxshi o'zlashtirdingiz. Davom eting!"
+        else:
+            ai_feedback = f"Excellent work! You've mastered {session['topic']}. Keep it up!"
     elif score >= 60:
-        ai_feedback = "Good job! Review the mistakes." if lang == 'en' else "Yaxshi! Xatolarni ko'rib chiqing."
+        if lang == 'uz':
+            ai_feedback = f"Yaxshi! {session['topic']} bo'yicha yaxshi bilim ko'rsatdingiz. Yana mashq qiling."
+        else:
+            ai_feedback = f"Good job! You're making progress on {session['topic']}. Practice more."
     else:
-        ai_feedback = "Keep practicing! You'll improve." if lang == 'en' else "Mashq qiling! Yaxshilanasiz."
+        if lang == 'uz':
+            ai_feedback = f"{session['topic']} mavzusini qayta ko'rib chiqing. Mashq qilish muhim!"
+        else:
+            ai_feedback = f"Review {session['topic']} again. Practice makes perfect!"
     
     record_id = session.get('lesson_record_id')
     if record_id:
@@ -313,7 +324,7 @@ async def complete_lesson(message, user_id, user_sessions, db):
     if 'practice_session_id' in session:
         db.complete_quiz_session(session['practice_session_id'], score)
     
-    # Only update lesson completion, NOT day progression (day moves forward when user clicks Next Day)
+    # Only update lesson completion, NOT day progression (that happens when user clicks Next Day)
     if not is_extra:
         user = db.get_user(user_id)
         if user:
@@ -329,25 +340,82 @@ async def complete_lesson(message, user_id, user_sessions, db):
             
             db.update_user(user['id'], update_fields)
     
-    result_msg = f"🎉 Day {session['day']} completed!\n\n📊 Score: {correct}/{total} ({score:.0f}%)\n\n{ai_feedback}" if lang == 'en' else f"🎉 {session['day']}-kun yakunlandi!\n\n📊 Ball: {correct}/{total} ({score:.0f}%)\n\n{ai_feedback}"
+    # Build result message with length check
+    if lang == 'en':
+        result_msg = f"🎉 Day {session['day']} completed!\n\n📊 Score: {correct}/{total} ({score:.0f}%)\n\n💬 {ai_feedback}"
+    else:
+        result_msg = f"🎉 {session['day']}-kun yakunlandi!\n\n📊 Ball: {correct}/{total} ({score:.0f}%)\n\n💬 {ai_feedback}"
     
-    print(f"Result message length: {len(result_msg)} chars")
+    # Ensure message isn't too long for Telegram (4096 char limit)
+    if len(result_msg) > 4000:
+        result_msg = result_msg[:4000] + "..."
     
-    # Always show buttons after completion (both main lesson and extra practice)
-    print("Sending result WITH BUTTONS")
-    more_btn = "📝 More Practice" if lang == 'en' else "📝 Ko'proq mashq"
-    next_btn = "➡️ Next Day" if lang == 'en' else "➡️ Keyingi kun"
-    remind_btn = "⏰ Remind Me Tomorrow" if lang == 'en' else "⏰ Ertaga eslatma"
+    print(f"DEBUG: is_extra={is_extra}, score={score}, correct={correct}, total={total}")
     
-    keyboard = [
-        [InlineKeyboardButton(more_btn, callback_data=f"more_practice_{user_id}")],
-        [InlineKeyboardButton(next_btn, callback_data=f"next_day_{user_id}")],
-        [InlineKeyboardButton(remind_btn, callback_data=f"wait_reminder_{user_id}")]
-    ]
+    if is_extra:
+        # For extra practice, just show results and clear session
+        await message.reply_text(result_msg)
+        user_sessions.pop(user_id, None)
+        return
     
-    print(f"Keyboard created with {len(keyboard)} rows")
-    await message.reply_text(result_msg, reply_markup=InlineKeyboardMarkup(keyboard))
-    print("Message with buttons sent successfully!")
+    # Main lesson - show buttons
+    print(f"DEBUG: Main lesson. Score={score}")
+    
+    # Check if score is too low (< 30%) - MANDATORY retry
+    if score < 30:
+        print("DEBUG: Score < 30% - Mandatory retry")
+        if lang == 'en':
+                retry_msg = "\n\n⚠️ Your score is below 30%. You must practice more before moving to the next day.\n\nMinimum required: 50%"
+            else:
+                retry_msg = "\n\n⚠️ Sizning balingiz 30% dan past. Keyingi kunga o'tishdan oldin ko'proq mashq qilishingiz kerak.\n\nMinimal talab: 50%"
+            
+            result_msg += retry_msg
+            
+            # Only show More Practice button (force retry)
+            more_btn = "📝 More Practice (Required)" if lang == 'en' else "📝 Ko'proq mashq (Majburiy)"
+            keyboard = [[InlineKeyboardButton(more_btn, callback_data=f"more_practice_{user_id}")]]
+            
+            await message.reply_text(result_msg, reply_markup=InlineKeyboardMarkup(keyboard))
+        
+        # Check if score is low (30-49%) - Strongly recommend retry
+        elif score < 50:
+            print("DEBUG: Score 30-49% - Strongly recommended")
+            if lang == 'en':
+                warning_msg = "\n\n📊 Your score is below 50%. We strongly recommend more practice before moving forward."
+            else:
+                warning_msg = "\n\n📊 Sizning balingiz 50% dan past. Oldinga o'tishdan oldin ko'proq mashq qilishni tavsiya qilamiz."
+            
+            result_msg += warning_msg
+            
+            # Show all 3 options but emphasize practice
+            more_btn = "📝 More Practice (Recommended)" if lang == 'en' else "📝 Ko'proq mashq (Tavsiya)"
+            next_btn = "➡️ Next Day" if lang == 'en' else "➡️ Keyingi kun"
+            reminder_btn = "⏰ Wait for Reminder" if lang == 'en' else "⏰ Eslatma kutish"
+            
+            keyboard = [
+                [InlineKeyboardButton(more_btn, callback_data=f"more_practice_{user_id}")],
+                [InlineKeyboardButton(next_btn, callback_data=f"next_day_{user_id}")],
+                [InlineKeyboardButton(reminder_btn, callback_data=f"wait_reminder_{user_id}")]
+            ]
+            
+            await message.reply_text(result_msg, reply_markup=InlineKeyboardMarkup(keyboard))
+        
+        else:
+            # Score >= 50% - All options available
+            print("DEBUG: Score >= 50% - All options available")
+            more_btn = "📝 More Practice" if lang == 'en' else "📝 Ko'proq mashq"
+            next_btn = "➡️ Next Day" if lang == 'en' else "➡️ Keyingi kun"
+            reminder_btn = "⏰ Wait for Reminder" if lang == 'en' else "⏰ Eslatma kutish"
+            
+            keyboard = [
+                [InlineKeyboardButton(more_btn, callback_data=f"more_practice_{user_id}")],
+                [InlineKeyboardButton(next_btn, callback_data=f"next_day_{user_id}")],
+                [InlineKeyboardButton(reminder_btn, callback_data=f"wait_reminder_{user_id}")]
+            ]
+            
+        print(f"DEBUG: Created keyboard with {len(keyboard)} rows")
+        await message.reply_text(result_msg, reply_markup=InlineKeyboardMarkup(keyboard))
+        print("DEBUG: Message with buttons sent")
 
 async def daily_lesson_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -432,7 +500,7 @@ async def handle_next_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
         current_day = int(user.get('fields', {}).get('Current Day', '1'))
         next_day = current_day + 1
         
-        # Progress to next day
+        # NOW update the day progression
         update_fields = {
             'Current Day': str(next_day),
             'Last Active': datetime.now().isoformat()
@@ -457,11 +525,32 @@ async def handle_wait_reminder(update: Update, context: ContextTypes.DEFAULT_TYP
     user_sessions.pop(user_id, None)
     
     user = db.get_user(user_id)
-    if user:
-        lang = user.get('fields', {}).get('Language', 'en')
-        current_day = int(user.get('fields', {}).get('Current Day', '1'))
+    if not user:
+        return
+    
+    user_data = user.get('fields', {})
+    lang = user_data.get('Language', 'en')
+    reminder_time = user_data.get('Reminder Time', '')
+    current_day = int(user_data.get('Current Day', '1'))
+    
+    if reminder_time:
+        # User has reminder set
+        if lang == 'en':
+            msg = f"✅ Perfect! See you tomorrow at {reminder_time} for Day {current_day}!\n\n💪 Keep up the great work!"
+        else:
+            msg = f"✅ Ajoyib! Ertaga soat {reminder_time}da {current_day}-kun uchun ko'rishamiz!\n\n💪 Davom eting!"
+        await query.message.reply_text(msg)
+    else:
+        # User doesn't have reminder set - ask them to set one
+        if lang == 'en':
+            msg = f"⏰ You don't have a daily reminder set yet.\n\nWhat time would you like to receive your daily lesson reminder?\n\nExample: 09:00 or 18:30"
+        else:
+            msg = f"⏰ Sizda hali kunlik eslatma o'rnatilmagan.\n\nQaysi vaqtda kunlik dars eslatmasini olishni xohlaysiz?\n\nMisol: 09:00 yoki 18:30"
         
-        db.update_user(user['id'], {'Last Active': datetime.now().isoformat()})
+        # Update user mode to expect reminder time
+        db.update_user(user['id'], {
+            'Mode': 'awaiting_reminder_time',
+            'Expected': 'reminder_time'
+        })
         
-        msg = f"👋 See you tomorrow!\n\n💪 Keep up the great work!" if lang == 'en' else f"👋 Ertaga ko'rishguncha!\n\n💪 Davom eting!"
         await query.message.reply_text(msg)

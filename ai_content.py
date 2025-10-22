@@ -155,20 +155,18 @@ Generate all {count} questions now.
         return questions
     
     def generate_theory_explanation(self, topic, language='uz'):
-        """Generate detailed theory explanation with examples"""
+        """Generate concise theory explanation"""
         lang_text = "Uzbek" if language == 'uz' else "English"
         
         prompt = f"""
-        Create a detailed math lesson about "{topic}" in {lang_text} for 10-11 grade DTM exam students.
+        Create a SHORT math lesson about "{topic}" in {lang_text} for DTM exam students.
         
-        Structure:
-        1. Clear definition and concept explanation (2-3 sentences)
-        2. Key formulas or rules (if applicable)
-        3. Step-by-step example with solution
-        4. Practical tip for DTM exam
+        Include:
+        1. Brief definition (1-2 sentences)
+        2. One key formula
+        3. One simple example
         
-        Make it detailed, clear, and include concrete numbers in examples.
-        Use simple language but be thorough.
+        Keep it under 400 words. Be concise.
         """
         
         response = openai.ChatCompletion.create(
