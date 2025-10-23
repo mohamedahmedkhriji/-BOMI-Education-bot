@@ -4,6 +4,93 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from datetime import datetime
 
+async def resume_lesson(message, user_id, lesson_record_id, user_sessions, db, lang):
+    """Resume incomplete lesson from database"""
+    try:
+        response = requests.get(
+            f"https://api.airtable.com/v0/{db.base_id}/tblInFtIh5fZt59g4/{lesson_record_id}",
+            headers=db.headers
+        )
+        
+        if response.status_code != 200:
+            return False
+        
+        lesson = response.json().get('fields', {})
+        
+        if lesson.get('Lesson Status') == 'Completed':
+            return False
+        
+        day = int(lesson.get('Day', '1'))
+        topic = lesson.get('Topic', '')
+        current_task_index = int(lesson.get('Current Task Index', '1'))
+        
+        # Get quiz session to retrieve questions
+        quiz_filter = f"AND({{User ID}}='{user_id}', {{Lesson Day}}={day})"
+        quiz_response = requests.get(
+            f"https://api.airtable.com/v0/{db.base_id}/tblQuizzes",
+            headers=db.headers,
+            params={'filterByFormula': quiz_filter}
+        )
+        
+        if quiz_response.status_code != 200:
+            return False
+        
+        quiz_records = quiz_response.json().get('records', [])
+        if not quiz_records:
+            return False
+        
+        # Reconstruct questions from quiz records
+        questions = []
+        answers = []
+        for record in sorted(quiz_records, key=lambda x: x.get('fields', {}).get('Question Number', 0)):
+            q_data = record.get('fields', {})
+            questions.append({
+                'text': q_data.get('Question Text', ''),
+                'options': [
+                    q_data.get('Option A', ''),
+                    q_data.get('Option B', ''),
+                    q_data.get('Option C', ''),
+                    q_data.get('Option D', '')
+                ],
+                'correct': q_data.get('Correct Answer', 'A'),
+                'topic': topic.lower()
+            })
+            
+            user_answer = q_data.get('User Answer', '')
+            if user_answer:
+                answers.append({
+                    'answer': user_answer,
+                    'correct': q_data.get('Correct Answer', 'A'),
+                    'is_correct': user_answer == q_data.get('Correct Answer', 'A'),
+                    'question': q_data.get('Question Text', '')
+                })
+        
+        if not questions:
+            return False
+        
+        practice_session_id = quiz_records[0].get('fields', {}).get('Session ID', '')
+        
+        user_sessions[user_id] = {
+            'lesson_record_id': lesson_record_id,
+            'day': day,
+            'topic': topic,
+            'questions': questions,
+            'current_task': current_task_index - 1,
+            'answers': answers,
+            'lang': lang,
+            'practice_session_id': practice_session_id
+        }
+        
+        resume_msg = f"🔄 Resuming Day {day}: {topic}\n\nYou were on Task {current_task_index}/5" if lang == 'en' else f"🔄 {day}-kun davom ettirilmoqda: {topic}\n\nSiz {current_task_index}/5 topshiriqda edingiz"
+        await message.reply_text(resume_msg)
+        
+        await show_task(message, user_id, user_sessions)
+        return True
+        
+    except Exception as e:
+        print(f"Error resuming lesson: {e}")
+        return False
+
 async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = context.bot_data['db']
     user_sessions = context.bot_data['user_sessions']
@@ -28,6 +115,14 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
     
     current_day = int(user_data.get('Current Day', '1'))
     lang = user_data.get('Language', 'en')
+    
+    # Check for incomplete lesson in database
+    active_lesson_id = user_data.get('Active Lesson ID', '')
+    if active_lesson_id:
+        print(f"Found incomplete lesson: {active_lesson_id}")
+        resumed = await resume_lesson(update.message, user_id, active_lesson_id, user_sessions, db, lang)
+        if resumed:
+            return
     
     # Check if user completed 14-day program
     if current_day > 14:
@@ -284,13 +379,22 @@ async def complete_lesson(message, user_id, user_sessions, db):
     score = (correct / total) * 100
     lang = session.get('lang', 'en')
     
-    # Simple feedback based on score
-    if score >= 80:
-        ai_feedback = "Excellent work! Keep it up!" if lang == 'en' else "Ajoyib! Davom eting!"
-    elif score >= 60:
-        ai_feedback = "Good job! Review the mistakes." if lang == 'en' else "Yaxshi! Xatolarni ko'rib chiqing."
-    else:
-        ai_feedback = "Keep practicing! You'll improve." if lang == 'en' else "Mashq qiling! Yaxshilanasiz."
+    # Generate personalized AI feedback
+    from ai_content import AIContentGenerator
+    ai = AIContentGenerator()
+    
+    wrong_topics = [a['question'][:50] for a in answers if not a['is_correct']]
+    feedback_prompt = f"Student completed {session['topic']} lesson. Score: {correct}/{total} ({score:.0f}%). Provide brief motivational feedback and 2 specific study tips in {'Uzbek' if lang == 'uz' else 'English'}. Keep under 200 words."
+    
+    try:
+        ai_feedback = ai.generate_theory_explanation(feedback_prompt, lang)[:500]
+    except:
+        if score >= 80:
+            ai_feedback = "Excellent work! Keep it up!" if lang == 'en' else "Ajoyib! Davom eting!"
+        elif score >= 60:
+            ai_feedback = "Good job! Review the mistakes." if lang == 'en' else "Yaxshi! Xatolarni ko'rib chiqing."
+        else:
+            ai_feedback = "Keep practicing! You'll improve." if lang == 'en' else "Mashq qiling! Yaxshilanasiz."
     
     record_id = session.get('lesson_record_id')
     if record_id:
@@ -298,7 +402,7 @@ async def complete_lesson(message, user_id, user_sessions, db):
             "fields": {
                 "Lesson Status": "Completed",
                 "Lesson Score": str(correct),
-                "AI Feedback (Per Task)": ai_feedback,
+                "AI Feedback (Per Task)": ai_feedback[:1000],
                 "Lesson End Time": datetime.now().isoformat()
             }
         }
