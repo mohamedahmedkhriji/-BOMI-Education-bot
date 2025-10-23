@@ -1,5 +1,7 @@
 import asyncio
 import requests
+import openai
+import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from datetime import datetime
@@ -382,12 +384,17 @@ async def complete_lesson(message, user_id, user_sessions, db):
     # Generate personalized AI feedback
     from ai_content import AIContentGenerator
     ai = AIContentGenerator()
+    openai.api_key = os.getenv('OPENAI_API_KEY')
     
-    wrong_topics = [a['question'][:50] for a in answers if not a['is_correct']]
-    feedback_prompt = f"Student completed {session['topic']} lesson. Score: {correct}/{total} ({score:.0f}%). Provide brief motivational feedback and 2 specific study tips in {'Uzbek' if lang == 'uz' else 'English'}. Keep under 200 words."
+    feedback_prompt = f"Student completed {session['topic']} lesson. Score: {correct}/{total} ({score:.0f}%). Provide motivational feedback and study tips in {'Uzbek' if lang == 'uz' else 'English'}. Keep concise."
     
     try:
-        ai_feedback = ai.generate_theory_explanation(feedback_prompt, lang)[:500]
+        response = openai.ChatCompletion.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": feedback_prompt}],
+            max_tokens=300
+        )
+        ai_feedback = ai._clean_text(response.choices[0].message.content)
     except:
         if score >= 80:
             ai_feedback = "Excellent work! Keep it up!" if lang == 'en' else "Ajoyib! Davom eting!"
@@ -433,12 +440,21 @@ async def complete_lesson(message, user_id, user_sessions, db):
             
             db.update_user(user['id'], update_fields)
     
-    result_msg = f"🎉 Day {session['day']} completed!\n\n📊 Score: {correct}/{total} ({score:.0f}%)\n\n{ai_feedback}" if lang == 'en' else f"🎉 {session['day']}-kun yakunlandi!\n\n📊 Ball: {correct}/{total} ({score:.0f}%)\n\n{ai_feedback}"
+    # Split message if feedback is long
+    score_msg = f"🎉 Day {session['day']} completed!\n\n📊 Score: {correct}/{total} ({score:.0f}%)" if lang == 'en' else f"🎉 {session['day']}-kun yakunlandi!\n\n📊 Ball: {correct}/{total} ({score:.0f}%)"
     
-    print(f"Result message length: {len(result_msg)} chars")
+    print(f"Feedback length: {len(ai_feedback)} chars")
+    
+    # Send score message first
+    await message.reply_text(score_msg)
+    
+    # Send feedback as separate message to ensure it's complete
+    if ai_feedback:
+        feedback_header = "💬 Feedback:" if lang == 'en' else "💬 Fikr:"
+        await message.reply_text(f"{feedback_header}\n\n{ai_feedback}")
     
     # Always show buttons after completion (both main lesson and extra practice)
-    print("Sending result WITH BUTTONS")
+    print("Sending buttons")
     more_btn = "📝 More Practice" if lang == 'en' else "📝 Ko'proq mashq"
     next_btn = "➡️ Next Day" if lang == 'en' else "➡️ Keyingi kun"
     remind_btn = "⏰ Remind Me Tomorrow" if lang == 'en' else "⏰ Ertaga eslatma"
@@ -449,9 +465,10 @@ async def complete_lesson(message, user_id, user_sessions, db):
         [InlineKeyboardButton(remind_btn, callback_data=f"wait_reminder_{user_id}")]
     ]
     
+    action_msg = "What's next?" if lang == 'en' else "Keyingi qadam?"
     print(f"Keyboard created with {len(keyboard)} rows")
-    await message.reply_text(result_msg, reply_markup=InlineKeyboardMarkup(keyboard))
-    print("Message with buttons sent successfully!")
+    await message.reply_text(action_msg, reply_markup=InlineKeyboardMarkup(keyboard))
+    print("Messages sent successfully!")
 
 async def daily_lesson_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -563,9 +580,21 @@ async def handle_wait_reminder(update: Update, context: ContextTypes.DEFAULT_TYP
     user = db.get_user(user_id)
     if user:
         lang = user.get('fields', {}).get('Language', 'en')
-        current_day = int(user.get('fields', {}).get('Current Day', '1'))
+        reminder_time = user.get('fields', {}).get('Reminder Time', '')
         
         db.update_user(user['id'], {'Last Active': datetime.now().isoformat()})
         
-        msg = f"👋 See you tomorrow!\n\n💪 Keep up the great work!" if lang == 'en' else f"👋 Ertaga ko'rishguncha!\n\n💪 Davom eting!"
+        if reminder_time:
+            if lang == 'en':
+                msg = f"👋 See you tomorrow at {reminder_time}!\n\n⏰ I'll send you a reminder.\n\n💡 Want to continue now? Send /daily_lesson"
+            else:
+                msg = f"👋 Ertaga {reminder_time} da ko'rishguncha!\n\n⏰ Eslatma yuboraman.\n\n💡 Hozir davom etmoqchimisiz? /daily_lesson yuboring"
+        else:
+            if lang == 'en':
+                msg = "⏰ What time should I remind you tomorrow?\n\nSend time in 24-hour format (e.g., 09:00 or 18:30)\n\n💡 Or send /daily_lesson to continue now!"
+            else:
+                msg = "⏰ Ertaga qaysi vaqtda eslatma yuboray?\n\n24 soatlik formatda yuboring (masalan: 09:00 yoki 18:30)\n\n💡 Yoki /daily_lesson yuboring!"
+            
+            db.update_user(user['id'], {'Mode': 'set_reminder_time', 'Expected': 'reminder_time'})
+        
         await query.message.reply_text(msg)
