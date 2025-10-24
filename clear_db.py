@@ -11,10 +11,11 @@ HEADERS = {'Authorization': f'Bearer {API_KEY}'}
 tables = {
     'Users': 'tblV9TLAFPX5JqcAP',
     'Learning': 'tblInFtIh5fZt59g4',
-    'Quizzes': 'tblLYqC470dcUjytq'
+    'Quizzes': 'tblLYqC470dcUjytq',
+    'Courses': 'tblmY3mLULswP7JoU'
 }
 
-print("Clearing database (keeping Courses table)...")
+print("Clearing ALL database tables including Courses...")
 
 for table_name, table_id in tables.items():
     url = f'https://api.airtable.com/v0/{BASE_ID}/{table_id}'
@@ -34,4 +35,4 @@ for table_name, table_id in tables.items():
     else:
         print(f"\nError fetching {table_name}: {response.text}")
 
-print("\nDatabase cleared successfully!")
+print("\nAll database tables cleared successfully!")

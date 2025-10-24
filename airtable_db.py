@@ -245,19 +245,10 @@ class AirtableDB:
             'quizzes': quizzes_response.json().get('records', [])
         }
     
-    def get_course(self, topic, level, language):
-        """Get course content from Courses table"""
-        params = {"filterByFormula": f"AND({{Topic}} = '{topic}', {{Level}} = '{level}', {{Language}} = '{language}')"}
-        response = requests.get(
-            f"{self.base_url}/tblmY3mLULswP7JoU",
-            headers=self.headers,
-            params=params
-        )
-        data = response.json()
-        return data.get('records', [{}])[0] if data.get('records') else None
+
     
     def get_lesson_with_details(self, user_id, day):
-        """Get lesson with linked User, Course, and Quiz data"""
+        """Get lesson with linked User and Quiz data (no courses)"""
         # Get lesson
         params = {"filterByFormula": f"AND({{User ID}} = '{user_id}', {{Day}} = '{day}')"}
         lesson_response = requests.get(
@@ -270,15 +261,8 @@ class AirtableDB:
         if not lesson:
             return None
         
-        lesson_fields = lesson.get('fields', {})
-        topic = lesson_fields.get('Topic')
-        
         # Get user
         user = self.get_user(user_id)
-        user_fields = user.get('fields', {}) if user else {}
-        
-        # Get course
-        course = self.get_course(topic, user_fields.get('Level', 'Beginner'), user_fields.get('Language', 'en'))
         
         # Get quizzes for this lesson
         quiz_params = {"filterByFormula": f"AND({{User ID}} = '{user_id}', {{Lesson Day}} = '{day}')"}
@@ -292,6 +276,5 @@ class AirtableDB:
         return {
             'lesson': lesson,
             'user': user,
-            'course': course,
             'quizzes': quizzes
         }

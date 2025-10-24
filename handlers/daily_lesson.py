@@ -112,7 +112,18 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
     learning_status = user_data.get('Learning Status', '')
     
     if learning_status != 'In Progress':
-        await update.message.reply_text("Please complete onboarding and start your study plan first.")
+        if learning_status == 'Test Completed':
+            if lang == 'uz':
+                msg = "📅 Avval o'quv rejangizni ko'ring va boshlang!\n\nQuyidagi tugmani bosing:"
+                btn_text = "📅 Rejani ko'rish"
+            else:
+                msg = "📅 Please view and start your study plan first!\n\nClick the button below:"
+                btn_text = "📅 View Plan"
+            
+            keyboard = [[InlineKeyboardButton(btn_text, callback_data="get_plan")]]
+            await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+        else:
+            await update.message.reply_text("Please complete onboarding first. Send /start")
         return
     
     current_day = int(user_data.get('Current Day', '1'))
@@ -139,7 +150,7 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
     
     weak_topics = user_data.get('Weak Topics', '').split(', ') if user_data.get('Weak Topics') else []
     
-    all_topics = weak_topics + ['Algebra', 'Geometry', 'Functions', 'Trigonometry', 'Logarithms', 'Equations', 'Inequalities', 'Sequences', 'Probability', 'Statistics', 'Derivatives', 'Integrals', 'Vectors', 'Complex Numbers']
+    all_topics = weak_topics + ['Algebra', 'Geometry', 'Arithmetic', 'Percentages', 'Fractions', 'Ratios', 'Equations', 'Inequalities', 'Functions', 'Graphs', 'Probability', 'Statistics', 'Number Theory', 'Combinatorics']
     topic = all_topics[current_day - 1] if current_day <= len(all_topics) else 'Review'
     
     msg = f"⏳ Generating Day {current_day} lesson: {topic}..." if lang == 'en' else f"⏳ {current_day}-kun darsi tayyorlanmoqda: {topic}..."
@@ -150,14 +161,9 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
     
     try:
         user_level = user_data.get('Level', 'Beginner')
-        course = db.get_course(topic, user_level, lang)
         
-        course_id = ""
-        if course:
-            theory = course.get('fields', {}).get('Theory Content', '')
-            course_id = str(course.get('fields', {}).get('Course ID', ''))
-        else:
-            theory = ai.generate_theory_explanation(topic, lang)
+        # Generate theory using AI and dataset
+        theory = ai.generate_theory_explanation(topic, lang)
         
         questions = ai.generate_practice_questions(topic, lang, count=5)
         
@@ -193,7 +199,7 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
                 "User ID": str(user_id),
                 "Day": str(current_day),
                 "Topic": topic,
-                "Theory Summary": theory[:1000],
+                "Theory Summary": theory[:2000],
                 "Task 1": tasks[0][:1000] if len(tasks) > 0 else "",
                 "Task 2": tasks[1][:1000] if len(tasks) > 1 else "",
                 "Task 3": tasks[2][:1000] if len(tasks) > 2 else "",
@@ -206,9 +212,8 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
             }
         }
         
-        # Add Course ID if available
-        if course_id:
-            lesson_data["fields"]["Lesson ID"] = f"lesson_day{current_day}_course{course_id}_user{user_id}"
+        # Set lesson ID
+        lesson_data["fields"]["Lesson ID"] = f"lesson_day{current_day}_user{user_id}_{topic.lower()}"
         
         response = requests.post(
             f"https://api.airtable.com/v0/{db.base_id}/tblInFtIh5fZt59g4",
@@ -238,14 +243,8 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
             'practice_session_id': practice_session_id
         }
         
-        # Truncate theory cleanly at sentence boundary (max 600 chars)
-        theory_clean = theory[:600] if len(theory) > 600 else theory
-        if len(theory) > 600:
-            last_period = theory_clean.rfind('.')
-            if last_period > 300:
-                theory_clean = theory_clean[:last_period + 1]
-        
-        theory_msg = f"📚 Day {current_day}: {topic}\n\n{theory_clean}" if lang == 'en' else f"📚 {current_day}-kun: {topic}\n\n{theory_clean}"
+        # Send full theory content (Telegram supports up to 4096 characters)
+        theory_msg = f"📚 Day {current_day}: {topic}\n\n{theory}" if lang == 'en' else f"📚 {current_day}-kun: {topic}\n\n{theory}"
         await update.message.reply_text(theory_msg, parse_mode=None)
         
         await show_task(update.message, user_id, user_sessions)
@@ -503,7 +502,7 @@ async def handle_more_practice(update: Update, context: ContextTypes.DEFAULT_TYP
     lang = user_data.get('Language', 'en')
     weak_topics = user_data.get('Weak Topics', '').split(', ') if user_data.get('Weak Topics') else []
     
-    all_topics = weak_topics + ['Algebra', 'Geometry', 'Functions', 'Trigonometry', 'Logarithms', 'Equations', 'Inequalities', 'Sequences', 'Probability', 'Statistics', 'Derivatives', 'Integrals', 'Vectors', 'Complex Numbers']
+    all_topics = weak_topics + ['Algebra', 'Geometry', 'Arithmetic', 'Percentages', 'Fractions', 'Ratios', 'Equations', 'Inequalities', 'Functions', 'Graphs', 'Probability', 'Statistics', 'Number Theory', 'Combinatorics']
     topic = all_topics[current_day - 2] if current_day > 1 else all_topics[0]
     
     msg = "⏳ Generating more practice questions..." if lang == 'en' else "⏳ Ko'proq savollar tayyorlanmoqda..."
@@ -580,7 +579,7 @@ async def handle_wait_reminder(update: Update, context: ContextTypes.DEFAULT_TYP
     user = db.get_user(user_id)
     if user:
         lang = user.get('fields', {}).get('Language', 'en')
-        reminder_time = user.get('fields', {}).get('Reminder Time', '')
+        reminder_time = user.get('fields', {}).get('Reminder Time', '') or user.get('fields', {}).get('Timezone', '')
         
         db.update_user(user['id'], {'Last Active': datetime.now().isoformat()})
         

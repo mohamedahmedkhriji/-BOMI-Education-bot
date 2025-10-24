@@ -1,5 +1,8 @@
 import openai
 import os
+import json
+import random
+import openai
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -7,84 +10,169 @@ load_dotenv()
 class AIContentGenerator:
     def __init__(self):
         openai.api_key = os.getenv('OPENAI_API_KEY')
+        self.full_dataset = self._load_all_datasets()
+        self.constants = self._load_constants()
+        self.operations = self._load_operations()
+        self.training_context = self._build_training_context()
+        print(f"Loaded {len(self.full_dataset)} problems for LLM training")
+    
+    def _load_all_datasets(self):
+        """Load ALL dataset files for comprehensive training"""
+        datasets = []
+        files = ['train.json', 'dev.json', 'test.json', 'challenge_test.json']
+        
+        for file in files:
+            try:
+                path = f"../aymen/math/{file}"
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    datasets.extend(data)
+                    print(f"Loaded {len(data)} problems from {file}")
+            except Exception as e:
+                print(f"Failed to load {file}: {e}")
+        
+        return datasets
+    
+    def _load_constants(self):
+        """Load mathematical constants"""
+        try:
+            with open('../aymen/math/constant_list.txt', 'r') as f:
+                return [line.strip() for line in f if line.strip()]
+        except:
+            return []
+    
+    def _load_operations(self):
+        """Load mathematical operations"""
+        try:
+            with open('../aymen/math/operation_list.txt', 'r') as f:
+                return [line.strip() for line in f if line.strip()]
+        except:
+            return []
+    
+    def _build_training_context(self):
+        """Build comprehensive training context from all data"""
+        categories = {}
+        for problem in self.full_dataset:
+            cat = problem.get('category', 'general')
+            if cat not in categories:
+                categories[cat] = []
+            categories[cat].append(problem)
+        
+        context = f"""DTM EXAM DATASET ANALYSIS:
+Total Problems: {len(self.full_dataset)}
+Categories: {list(categories.keys())}
+Constants Available: {len(self.constants)}
+Operations Available: {len(self.operations)}
+
+PROBLEM PATTERNS:"""
+        
+        for cat, problems in categories.items():
+            context += f"\n{cat.upper()}: {len(problems)} problems"
+            if problems:
+                sample = problems[0]
+                context += f"\n  Sample: {sample['Problem'][:80]}..."
+        
+        return context
+    
+    def _validate_language(self, language):
+        """Validate and normalize language code"""
+        if language in ['uz', 'uzbek', 'o\'zbek']:
+            return 'uz'
+        elif language in ['en', 'eng', 'english']:
+            return 'en'
+        else:
+            print(f"Unknown language '{language}', defaulting to Uzbek")
+            return 'uz'  # Default to Uzbek for DTM exam
+    
+    def _get_language_instructions(self, language):
+        """Get language-specific instructions for AI generation"""
+        if language == 'uz':
+            return """
+LANGUAGE: Generate content in UZBEK (O'zbek tili)
+INSTRUCTIONS:
+- Use proper Uzbek grammar and vocabulary
+- Mathematical terms in Uzbek: son (number), tenglama (equation), formula (formula)
+- Numbers and calculations can be in standard notation
+- Use Uzbek question words: qancha (how much), necha (how many), qaysi (which)
+- Keep mathematical expressions clear and simple
+"""
+        else:
+            return """
+LANGUAGE: Generate content in ENGLISH
+INSTRUCTIONS:
+- Use clear, simple English suitable for exam preparation
+- Standard mathematical terminology
+- Avoid complex vocabulary, focus on clarity
+- Use common English question patterns
+"""
     
     def _clean_text(self, text):
         """Remove markdown and LaTeX formatting from text"""
         import re
-        # Remove LaTeX symbols
+        # Remove LaTeX math delimiters
         text = re.sub(r'\\\(|\\\)|\\\[|\\\]', '', text)
-        # Remove markdown headers
+        # Replace LaTeX commands with readable text
+        text = re.sub(r'\\text\{([^}]+)\}', r'\1', text)  # \text{Area} -> Area
+        text = re.sub(r'\\times', '×', text)  # \times -> ×
+        text = re.sub(r'\\div', '÷', text)  # \div -> ÷
+        text = re.sub(r'\\pi', 'π', text)  # \pi -> π
+        text = re.sub(r'\\frac\{([^}]+)\}\{([^}]+)\}', r'(\1/\2)', text)  # \frac{1}{2} -> (1/2)
+        text = re.sub(r'\\[a-zA-Z]+\{[^}]*\}', '', text)  # Remove other LaTeX commands
+        text = re.sub(r'\\[a-zA-Z]+', '', text)  # Remove LaTeX commands without braces
+        # Remove markdown formatting
         text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
-        # Remove bold/italic markers
         text = re.sub(r'\*\*|__', '', text)
         text = re.sub(r'\*|_', '', text)
-        # Remove horizontal rules
         text = re.sub(r'^---+$', '', text, flags=re.MULTILINE)
-        # Clean up multiple newlines
         text = re.sub(r'\n{3,}', '\n\n', text)
         return text.strip()
     
-    def generate_diagnostic_questions(self, count=10, language='uz'):
-        """Generate diagnostic math questions in specified language"""
-        lang_text = "Uzbek" if language == 'uz' else "English"
-        
-        prompt = f"""
-        Generate {count} multiple choice math questions for DTM exam preparation in {lang_text} language.
-        Each question should have 4 options (A, B, C, D) with one correct answer.
-        Topics: algebra, geometry, functions, trigonometry.
-        Format: Question text, options A-D, correct answer.
-        """
-        
-        response = openai.ChatCompletion.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=1500
-        )
-        
-        return response.choices[0].message.content
-    
     def generate_diagnostic_questions_structured(self, level='Beginner', language='uz', count=12):
-        """Generate structured diagnostic questions based on level"""
+        """Generate questions using comprehensive dataset training"""
+        # Validate language
+        language = self._validate_language(language)
+        training_examples = self._get_comprehensive_examples(level, count=10)
+        
         lang_text = "Uzbek" if language == 'uz' else "English"
+        difficulty = {
+            'Beginner': 'basic arithmetic and simple algebra',
+            'Intermediate': 'algebra, geometry, percentages', 
+            'Advanced': 'complex problems like DTM exam'
+        }.get(level, 'intermediate')
         
-        difficulty_map = {
-            'Beginner': 'basic level (grades 8-9)',
-            'Intermediate': 'intermediate level (grade 10)',
-            'Advanced': 'advanced level (grade 11, DTM exam difficulty)'
-        }
-        
-        difficulty = difficulty_map.get(level, 'intermediate level')
+        # Language-specific instructions
+        lang_instructions = self._get_language_instructions(language)
         
         prompt = f"""
-Generate exactly {count} multiple choice math questions for DTM exam preparation in {lang_text} language.
-Difficulty: {difficulty}
+{self.training_context}
 
-Topics to cover (mix them):
-- Algebra (equations, inequalities)
-- Geometry (triangles, circles, areas)
-- Functions
-- Trigonometry
-- Arithmetic operations
-- Logarithms
+You are an expert DTM exam question generator trained on {len(self.full_dataset)} real problems.
 
-IMPORTANT FORMATTING RULES:
-1. Use PLAIN TEXT only - NO LaTeX, NO special symbols
-2. Write clean math: 2x + 5 = 11 (NOT (2x+5)=11)
-3. Avoid unnecessary parentheses in answers
-4. Use simple notation: x^2 for x squared, sqrt(16) for square root
-5. Keep expressions clean and readable
+{lang_instructions}
 
-For EACH question, provide in this EXACT format:
+STUDY THESE EXAMPLES:
+{self._format_comprehensive_examples(training_examples)}
 
-QUESTION: [question text]
-A) [option A]
-B) [option B]
-C) [option C]
-D) [option D]
+GENERATE {count} NEW questions in {lang_text} at {difficulty} level.
+
+RULES:
+- Follow DTM exam format exactly
+- Use mathematical constants: {', '.join(self.constants[:5])}
+- Apply operations: {', '.join(self.operations[:10])}
+- PLAIN TEXT only, no LaTeX
+- 4 options A-D with clear correct answer
+- ALL OPTIONS MUST BE DIFFERENT AND UNIQUE
+- NO DUPLICATE VALUES OR REPEATED OPTIONS
+
+Format:
+QUESTION: [text]
+A) [unique option 1]
+B) [unique option 2] 
+C) [unique option 3]
+D) [unique option 4]
 CORRECT: [A/B/C/D]
-TOPIC: [topic name]
 
-Generate all {count} questions now.
+IMPORTANT: Each option must be DIFFERENT and UNIQUE!
 """
         
         try:
@@ -95,18 +183,69 @@ Generate all {count} questions now.
                 temperature=0.7
             )
             
-            content = response.choices[0].message.content
-            return self._parse_questions(content)
+            questions = self._parse_questions(response.choices[0].message.content)
+            return questions or self._get_dataset_questions(count, language=language)
+            
         except Exception as e:
-            try:
-                print(f"Error generating questions: {e}")
-            except:
-                print("Error generating questions (Unicode error in message)")
-            return None
+            print(f"AI failed, using dataset: {e}")
+            return self._get_dataset_questions(count)
+    
+    def generate_practice_questions(self, topic, language='uz', count=5):
+        """Generate practice questions using comprehensive dataset training"""
+        # Validate language
+        language = self._validate_language(language)
+        topic_examples = self._get_comprehensive_topic_examples(topic, count=8)
+        
+        lang_text = "Uzbek" if language == 'uz' else "English"
+        
+        # Language-specific instructions
+        lang_instructions = self._get_language_instructions(language)
+        
+        prompt = f"""
+{self.training_context}
+
+{lang_instructions}
+
+TOPIC-SPECIFIC TRAINING for {topic}:
+{self._format_comprehensive_examples(topic_examples)}
+
+GENERATE {count} DTM questions in {lang_text} about {topic}.
+
+USE DATASET PATTERNS:
+- Problem structure from {len(topic_examples)} examples
+- Mathematical operations: {', '.join(self.operations[:8])}
+- Constants when needed: {', '.join(self.constants[:3])}
+- ENSURE ALL 4 OPTIONS ARE COMPLETELY DIFFERENT
+- NO DUPLICATE ANSWERS OR VALUES
+
+Format:
+QUESTION: [text]
+A) [unique option 1]
+B) [unique option 2]
+C) [unique option 3] 
+D) [unique option 4]
+CORRECT: [A/B/C/D]
+
+IMPORTANT: Each option must be DIFFERENT and UNIQUE!
+"""
+        
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=2000,
+                temperature=0.8
+            )
+            
+            questions = self._parse_questions(response.choices[0].message.content)
+            return questions or self._get_dataset_questions(count, topic, language=language)
+            
+        except Exception as e:
+            print(f"Using dataset directly: {e}")
+            return self._get_dataset_questions(count, topic)
     
     def _parse_questions(self, content):
         """Parse AI response into structured question format"""
-        print("Parsing AI response...")
         questions = []
         lines = content.strip().split('\n')
         
@@ -118,162 +257,210 @@ Generate all {count} questions now.
             if not line:
                 continue
             
-            # Handle QUESTION: format
-            if line.startswith('QUESTION:') or line.startswith('Question:'):
+            if line.startswith('QUESTION:'):
                 if current_q and 'text' in current_q and 'correct' in current_q and len(options) == 4:
-                    current_q['options'] = options
-                    questions.append(current_q)
-                current_q = {'text': line.split(':', 1)[1].strip() if ':' in line else line}
+                    # Validate options are unique and answer is A-D
+                    if len(set(options)) == 4 and current_q['correct'] in ['A', 'B', 'C', 'D']:
+                        current_q['options'] = options
+                        questions.append(current_q)
+                current_q = {'text': line.split(':', 1)[1].strip()}
                 options = []
-            # Handle options
-            elif line.startswith('A)') or line.startswith('A.'):
-                options.append(line[2:].strip())
-            elif line.startswith('B)') or line.startswith('B.'):
-                options.append(line[2:].strip())
-            elif line.startswith('C)') or line.startswith('C.'):
-                options.append(line[2:].strip())
-            elif line.startswith('D)') or line.startswith('D.'):
-                options.append(line[2:].strip())
-            # Handle correct answer
-            elif line.startswith('CORRECT:') or line.startswith('Correct:'):
-                answer = line.split(':', 1)[1].strip() if ':' in line else ''
-                current_q['correct'] = answer.upper()[0] if answer else 'A'
-            # Handle topic
-            elif line.startswith('TOPIC:') or line.startswith('Topic:'):
-                topic = line.split(':', 1)[1].strip() if ':' in line else 'general'
-                current_q['topic'] = topic.lower()
+            elif line.startswith('A)'):
+                option = line[2:].strip()
+                if option and option not in options:
+                    options.append(option)
+            elif line.startswith('B)'):
+                option = line[2:].strip()
+                if option and option not in options:
+                    options.append(option)
+            elif line.startswith('C)'):
+                option = line[2:].strip()
+                if option and option not in options:
+                    options.append(option)
+            elif line.startswith('D)'):
+                option = line[2:].strip()
+                if option and option not in options:
+                    options.append(option)
+            elif line.startswith('CORRECT:'):
+                answer = line.split(':', 1)[1].strip()
+                answer_letter = answer.upper()[0] if answer else 'A'
+                # Only accept A, B, C, D answers
+                if answer_letter in ['A', 'B', 'C', 'D']:
+                    current_q['correct'] = answer_letter
+                else:
+                    current_q['correct'] = 'A'  # Default to A if invalid
         
-        # Add last question if valid
+        # Add last question with validation
         if current_q and 'text' in current_q and 'correct' in current_q and len(options) == 4:
-            current_q['options'] = options
-            questions.append(current_q)
+            if len(set(options)) == 4 and current_q['correct'] in ['A', 'B', 'C', 'D']:  # Ensure all options are unique and answer is A-D
+                current_q['options'] = options
+                questions.append(current_q)
         
-        try:
-            print(f"Parsed {len(questions)} valid questions")
-        except:
-            print(f"Parsed questions successfully")
+        print(f"Parsed {len(questions)} valid questions")
+        return questions
+    
+    def _get_comprehensive_examples(self, level, count=10):
+        """Get examples from full dataset based on difficulty"""
+        if not self.full_dataset:
+            return []
+        
+        # Filter by complexity for level
+        if level == 'Beginner':
+            filtered = [p for p in self.full_dataset if p.get('category') in ['general', 'gain']]
+        elif level == 'Advanced':
+            filtered = [p for p in self.full_dataset if p.get('category') in ['physics', 'geometry', 'probability']]
+        else:
+            filtered = self.full_dataset
+        
+        return random.sample(filtered, min(count, len(filtered)))
+    
+    def _get_comprehensive_topic_examples(self, topic, count=8):
+        """Get comprehensive topic-specific examples from full dataset"""
+        if not self.full_dataset:
+            return []
+            
+        topic_map = {
+            'algebra': ['general', 'gain'],
+            'geometry': ['geometry', 'physics'], 
+            'arithmetic': ['general'],
+            'percentages': ['gain'],
+            'fractions': ['general'],
+            'ratios': ['general', 'gain'],
+            'equations': ['general'],
+            'inequalities': ['general'],
+            'functions': ['general'],
+            'graphs': ['general'],
+            'probability': ['probability'],
+            'statistics': ['probability'],
+            'number theory': ['general'],
+            'combinatorics': ['probability']
+        }
+        
+        categories = topic_map.get(topic.lower(), ['general'])
+        filtered = [q for q in self.full_dataset if q.get('category') in categories]
+        
+        if not filtered:
+            filtered = self.full_dataset
+            
+        return random.sample(filtered, min(count, len(filtered)))
+    
+    def _format_comprehensive_examples(self, examples):
+        """Format comprehensive dataset examples for LLM training"""
+        formatted = []
+        for i, ex in enumerate(examples[:5]):  # Show more examples
+            options = ex.get('options', '').split(' , ')[:4]
+            if len(options) == 4:
+                rationale = ex.get('Rationale', '')[:100]
+                category = ex.get('category', 'general')
+                formatted.append(f"""
+EXAMPLE {i+1} [{category.upper()}]:
+Problem: {ex['Problem']}
+A) {options[0]}
+B) {options[1]} 
+C) {options[2]}
+D) {options[3]}
+Correct: {ex['correct'].upper()}
+Rationale: {rationale}...
+""")
+        return '\n'.join(formatted)
+    
+    def _get_dataset_questions(self, count, topic=None, language='uz'):
+        """Get questions directly from comprehensive dataset"""
+        if not self.full_dataset:
+            return []
+            
+        # Filter by topic if specified
+        if topic:
+            topic_map = {
+                'algebra': ['general', 'gain'],
+                'geometry': ['geometry', 'physics'],
+                'percentage': ['gain'],
+                'speed': ['physics'],
+                'probability': ['probability']
+            }
+            categories = topic_map.get(topic.lower(), ['general'])
+            filtered = [q for q in self.full_dataset if q.get('category') in categories]
+        else:
+            filtered = self.full_dataset
+            
+        # Filter out questions with answer E first
+        valid_questions = [q for q in filtered if q.get('correct', '').upper() in ['A', 'B', 'C', 'D']]
+        selected = random.sample(valid_questions, min(count, len(valid_questions))) if valid_questions else []
+        questions = []
+        
+        for item in selected:
+            # Skip questions with answer E (we only support A-D)
+            if item['correct'].upper() not in ['A', 'B', 'C', 'D']:
+                continue
+                
+            options = item.get('options', '').split(' , ')
+            if len(options) >= 4:
+                clean_options = [self._clean_option(opt.strip()) for opt in options[:4]]
+                # Ensure options are unique and not empty
+                if len(set(clean_options)) == 4 and all(opt for opt in clean_options):
+                    questions.append({
+                        'text': self._clean_text(item['Problem']),
+                        'options': clean_options,
+                        'correct': item['correct'].upper(),
+                        'topic': item.get('category', 'general'),
+                        'rationale': self._clean_text(item.get('Rationale', ''))
+                    })
+                
         return questions
     
     def generate_theory_explanation(self, topic, language='uz'):
-        """Generate concise theory explanation"""
+        """Generate theory explanation using comprehensive dataset context"""
+        # Validate language
+        language = self._validate_language(language)
+        topic_examples = self._get_comprehensive_topic_examples(topic, count=5)
         lang_text = "Uzbek" if language == 'uz' else "English"
         
-        prompt = f"""
-        Create a SHORT math lesson about "{topic}" in {lang_text} for DTM exam students.
-        
-        Include:
-        1. Brief definition (1-2 sentences)
-        2. One key formula
-        3. One simple example
-        
-        Keep it under 400 words. Be concise.
-        """
-        
-        response = openai.ChatCompletion.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=800
-        )
-        
-        content = response.choices[0].message.content
-        return self._clean_text(content)
-    
-    def generate_practice_questions(self, topic, language='uz', count=5):
-        """Generate practice questions for specific topic"""
-        lang_text = "Uzbek" if language == 'uz' else "English"
+        # Language-specific instructions
+        lang_instructions = self._get_language_instructions(language)
         
         prompt = f"""
-Generate exactly {count} multiple choice math questions about "{topic}" in {lang_text} for DTM exam.
+{self.training_context}
 
-IMPORTANT FORMATTING RULES:
-1. Use PLAIN TEXT only - NO LaTeX, NO special symbols
-2. Write clean math: 2x + 5 = 11 (NOT (2x+5)=11)
-3. Avoid unnecessary parentheses in answers
-4. Use simple notation: x^2 for x squared, sqrt(16) for square root
-5. Keep expressions clean and readable
+{lang_instructions}
 
-For EACH question, provide in this EXACT format:
+CREATE THEORY LESSON for "{topic}" in {lang_text}.
 
-QUESTION: [question text]
-A) [option A]
-B) [option B]
-C) [option C]
-D) [option D]
-CORRECT: [A/B/C/D]
-TOPIC: {topic}
+ANALYZE THESE PATTERNS:
+{self._format_comprehensive_examples(topic_examples)}
 
-Generate all {count} questions now.
+RELEVANT OPERATIONS: {', '.join([op for op in self.operations if topic.lower() in op.lower()][:5])}
+USEFUL CONSTANTS: {', '.join(self.constants[:3])}
+
+INCLUDE:
+1. Clear definition
+2. Key formulas (use simple text, NO LaTeX symbols)
+3. Step-by-step example with numbers
+4. Common DTM patterns
+
+IMPORTANT: Use plain text only. Write formulas like "Area = length × width" not "\text{{Area}} = \text{{length}} \times \text{{width}}". Use × for multiplication, ÷ for division, π for pi.
+
+Keep under 400 words.
 """
         
         try:
             response = openai.ChatCompletion.create(
                 model="gpt-4o",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=1500,
-                temperature=0.7
+                max_tokens=600
             )
-              
+            
             content = response.choices[0].message.content
-            print("AI Response received for practice questions")
-            
-            questions = self._parse_questions(content)
-            
-            if not questions:
-                print("Parsing returned empty list, trying fallback")
-                return self._get_fallback_questions(topic, language, count)
-            
-            if len(questions) < count:
-                print(f"Only got {len(questions)} questions, need {count}")
-                return self._get_fallback_questions(topic, language, count)
-            
-            return questions[:count]
-            
+            return self._clean_text(content)
         except Exception as e:
-            print(f"Error in generate_practice_questions: {e}")
-            import traceback
-            traceback.print_exc()
-            return self._get_fallback_questions(topic, language, count)
-    
-    def _get_fallback_questions(self, topic, language, count):
-        """Generate fallback questions with simpler format"""
-        lang_text = "Uzbek" if language == 'uz' else "English"
-        questions = []
-        
-        for i in range(count):
+            print(f"Theory generation failed: {e}")
             if language == 'uz':
-                questions.append({
-                    'text': f"{topic} mavzusidan {i+1}-savol. Quyidagi ifodani hisoblang: 2 + 2 = ?",
-                    'options': ['3', '4', '5', '6'],
-                    'correct': 'B',
-                    'topic': topic.lower()
-                })
+                return f"Mavzu: {topic}\nDTM imtihoniga tayyorgarlik uchun asosiy tushunchalar va formulalar."
             else:
-                questions.append({
-                    'text': f"Question {i+1} on {topic}. Calculate: 2 + 2 = ?",
-                    'options': ['3', '4', '5', '6'],
-                    'correct': 'B',
-                    'topic': topic.lower()
-                })
-        
-        return questions
+                return f"Topic: {topic}\nBasic concepts and formulas for DTM exam preparation."
     
-    def analyze_diagnostic_results(self, correct_answers, total_questions):
-        """Analyze diagnostic test results and provide feedback"""
-        percentage = (correct_answers / total_questions) * 100
-        
-        prompt = f"""
-        Student scored {correct_answers}/{total_questions} ({percentage}%) on DTM math diagnostic.
-        Provide in Uzbek:
-        1. Motivational message
-        2. 3 strengths to highlight
-        3. 3 areas for improvement
-        Keep it encouraging and specific to DTM exam preparation.
-        """
-        
-        response = openai.ChatCompletion.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=400
-        )
-        
-        return response.choices[0].message.content
+    def _clean_option(self, option):
+        """Clean option text by removing letter prefixes like 'a )', 'b )', etc."""
+        import re
+        # Remove patterns like 'a )', 'b )', 'c )', 'd )' from the beginning
+        cleaned = re.sub(r'^[a-d]\s*\)\s*', '', option, flags=re.IGNORECASE)
+        return self._clean_text(cleaned.strip())

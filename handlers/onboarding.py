@@ -147,11 +147,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id = user_data.get('Telegram Chat ID')
                 current_day = user_data.get('Current Day', '1')
                 
-                db.update_user(user['id'], {'Reminder Time': text, 'Timezone': text, 'Mode': 'idle', 'Expected': 'none', 'Last Active': datetime.now().isoformat()})
-                
-                # Update Learning Status if not set
-                if user_data.get('Learning Status') != 'In Progress':
-                    db.update_user(user['id'], {'Learning Status': 'In Progress'})
+                # Save to both fields for consistency
+                db.update_user(user['id'], {
+                    'Reminder Time': text,
+                    'Timezone': text,
+                    'Mode': 'idle',
+                    'Expected': 'none',
+                    'Learning Status': 'In Progress',
+                    'Last Active': datetime.now().isoformat()
+                })
                 
                 # Schedule reminder
                 try:
@@ -162,7 +166,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     print(f"Error scheduling reminder: {e}")
             
             user_sessions.pop(user_id, None)
-            msg = f"✅ {text} da eslatma o'rnatildi!\n\n/daily_lesson buyrug'ini ishlating." if lang == 'uz' else f"✅ Reminder set for {text}!\n\nUse /daily_lesson to begin."
+            msg = f"✅ {text} da eslatma o'rnatildi!\n\n/daily_lesson buyrug'ini yuboring." if lang == 'uz' else f"✅ Reminder set for {text}!\n\nUse /daily_lesson to begin."
             await update.message.reply_text(msg)
         else:
             msg = "❌ Noto'g'ri format. HH:MM formatida yozing\nMasalan: 18:00" if lang == 'uz' else "❌ Invalid format. Use HH:MM\nExample: 18:00"

@@ -13,7 +13,7 @@ async def get_study_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     weak = user_data.get('Weak Topics', '').split(', ') if user_data.get('Weak Topics') else []
     lang = user_data.get('Language', 'en')
     
-    all_topics = weak + ['Algebra', 'Geometry', 'Functions', 'Trigonometry', 'Logarithms', 'Equations', 'Inequalities', 'Sequences', 'Probability', 'Statistics', 'Derivatives', 'Integrals', 'Vectors', 'Complex Numbers']
+    all_topics = weak + ['Algebra', 'Geometry', 'Arithmetic', 'Percentages', 'Fractions', 'Ratios', 'Equations', 'Inequalities', 'Functions', 'Graphs', 'Probability', 'Statistics', 'Number Theory', 'Combinatorics']
     all_topics = all_topics[:14]
     
     if lang == 'uz':
@@ -61,6 +61,10 @@ async def set_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     user = db.get_user(user_id)
     lang = user.get('fields', {}).get('Language', 'en') if user else 'en'
+    
+    # Set Mode in database so onboarding.py can handle the time input
+    if user:
+        db.update_user(user['id'], {'Mode': 'set_reminder_time', 'Expected': 'reminder_time'})
     
     msg = "⏰ Vaqtni yuboring (HH:MM)\nMasalan: 18:00" if lang == 'uz' else "⏰ Send time (HH:MM)\nExample: 18:00"
     await query.message.reply_text(msg)
