@@ -17,17 +17,22 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("Already processing...")
         return
     
-    await query.answer()
+    try:
+        await query.answer()
+    except Exception:
+        pass  # Ignore expired queries
     processing.add(key)
     
     try:
         user = db.get_user(user_id)
         if user:
             db.update_user(user['id'], {'Mode': 'quiz_answer', 'Expected': 'quiz_answer', 'Last Active': datetime.now().isoformat()})
-        
-        user_data = user.get('fields', {})
-        level = user_data.get('Level', 'Beginner')
-        lang = user_data.get('Language', 'en')
+            user_data = user.get('fields', {})
+            level = user_data.get('Level', 'Beginner')
+            lang = user_data.get('Language', 'en')
+        else:
+            level = 'Beginner'
+            lang = 'en'
         
         from ai_content import AIContentGenerator
         ai = AIContentGenerator()
@@ -45,15 +50,16 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
             processing.discard(key)
             return
         
-        if not questions or len(questions) == 0:
-            print(f"Questions is None or empty: {questions}")
-            await query.message.reply_text("Could not generate enough questions. Please try again.")
+        if not questions or len(questions) < 12:
+            print(f"Generated only {len(questions) if questions else 0}/12 questions")
+            await query.message.reply_text(f"Generated only {len(questions) if questions else 0} questions. Please try again.")
             processing.discard(key)
             return
         
         print(f"Generated {len(questions)} questions for level {level} in {lang}")
         
         session_id = db.create_quiz_session(user_id, questions)
+        print(f"Created quiz session: {session_id}")
         
         user_sessions[user_id] = {
             'current_question': 0,
@@ -137,13 +143,14 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'answer': answer,
             'correct': question['correct'],
             'is_correct': is_correct,
-            'topic': question['topic']
+            'topic': question.get('topic', 'general')
         })
         
         question = session['questions'][current_q]
         
         quiz_id = f"{session['session_id']}_q{current_q + 1}"
         is_last = (current_q + 1) >= len(session['questions'])
+        print(f"Updating quiz answer: {quiz_id}, answer: {answer}, correct: {is_correct}")
         db.update_quiz_answer(quiz_id, answer, 1 if is_correct else 0, ai_feedback, is_last)
         
         session['current_question'] += 1
@@ -186,6 +193,9 @@ async def show_results(query, user_id, user_sessions, db):
     
     # Complete quiz session in Quizzes table
     db.complete_quiz_session(session['session_id'], percentage)
+    
+    # Create learning record for diagnostic test
+    db.create_learning_record(user_id, 0, "Diagnostic Test", "Assessment")
     
     user = db.get_user(user_id)
     if user:

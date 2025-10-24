@@ -11,11 +11,10 @@ HEADERS = {'Authorization': f'Bearer {API_KEY}'}
 tables = {
     'Users': 'tblV9TLAFPX5JqcAP',
     'Learning': 'tblInFtIh5fZt59g4',
-    'Quizzes': 'tblLYqC470dcUjytq',
-    'Courses': 'tblmY3mLULswP7JoU'
+    'Quizzes': 'tblLYqC470dcUjytq'
 }
 
-print("Clearing ALL database tables including Courses...")
+print("Clearing database tables (keeping Courses removed since using dataset)...")
 
 for table_name, table_id in tables.items():
     url = f'https://api.airtable.com/v0/{BASE_ID}/{table_id}'

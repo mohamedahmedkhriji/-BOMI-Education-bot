@@ -107,11 +107,15 @@ INSTRUCTIONS:
 """
     
     def _clean_text(self, text):
-        """Remove markdown and LaTeX formatting from text"""
+        """Remove markdown and LaTeX formatting, keep only essential math symbols"""
         import re
+        if not text:
+            return ""
+        
         # Remove LaTeX math delimiters
         text = re.sub(r'\\\(|\\\)|\\\[|\\\]', '', text)
-        # Replace LaTeX commands with readable text
+        
+        # Replace LaTeX commands with simple text
         text = re.sub(r'\\text\{([^}]+)\}', r'\1', text)  # \text{Area} -> Area
         text = re.sub(r'\\times', '×', text)  # \times -> ×
         text = re.sub(r'\\div', '÷', text)  # \div -> ÷
@@ -119,12 +123,30 @@ INSTRUCTIONS:
         text = re.sub(r'\\frac\{([^}]+)\}\{([^}]+)\}', r'(\1/\2)', text)  # \frac{1}{2} -> (1/2)
         text = re.sub(r'\\[a-zA-Z]+\{[^}]*\}', '', text)  # Remove other LaTeX commands
         text = re.sub(r'\\[a-zA-Z]+', '', text)  # Remove LaTeX commands without braces
+        
         # Remove markdown formatting
         text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
         text = re.sub(r'\*\*|__', '', text)
         text = re.sub(r'\*|_', '', text)
         text = re.sub(r'^---+$', '', text, flags=re.MULTILINE)
-        text = re.sub(r'\n{3,}', '\n\n', text)
+        
+        # Remove extra symbols but keep essential math ones
+        text = re.sub(r'[{}\[\]`~]', '', text)  # Remove brackets, backticks
+        text = re.sub(r'\\', '', text)  # Remove backslashes
+        text = re.sub(r'\$', '', text)  # Remove dollar signs
+        
+        # Clean up whitespace and improve formatting
+        text = re.sub(r'\s+', ' ', text)  # Multiple spaces to single
+        text = re.sub(r'\n{3,}', '\n\n', text)  # Multiple newlines to double
+        
+        # Add proper spacing around sections
+        text = re.sub(r'(Definition|Key Concepts|Example|Solution|Common Patterns)', r'\n\n\1', text)
+        text = re.sub(r'(\d+\.)\s*([A-Z])', r'\n\1 \2', text)  # Number lists
+        text = re.sub(r'(-\s*)', r'\n- ', text)  # Bullet points
+        
+        # Clean up extra newlines at start
+        text = re.sub(r'^\n+', '', text)
+        
         return text.strip()
     
     def generate_diagnostic_questions_structured(self, level='Beginner', language='uz', count=12):
@@ -153,13 +175,14 @@ You are an expert DTM exam question generator trained on {len(self.full_dataset)
 STUDY THESE EXAMPLES:
 {self._format_comprehensive_examples(training_examples)}
 
-GENERATE {count} NEW questions in {lang_text} at {difficulty} level.
+GENERATE EXACTLY {count} COMPLETE questions in {lang_text} at {difficulty} level. MUST have {count} questions, no more, no less.
 
 RULES:
 - Follow DTM exam format exactly
 - Use mathematical constants: {', '.join(self.constants[:5])}
 - Apply operations: {', '.join(self.operations[:10])}
-- PLAIN TEXT only, no LaTeX
+- PLAIN TEXT only, no LaTeX, no extra symbols
+- Use only basic math symbols: +, -, ×, ÷, =, (), %
 - 4 options A-D with clear correct answer
 - ALL OPTIONS MUST BE DIFFERENT AND UNIQUE
 - NO DUPLICATE VALUES OR REPEATED OPTIONS
@@ -215,6 +238,7 @@ USE DATASET PATTERNS:
 - Problem structure from {len(topic_examples)} examples
 - Mathematical operations: {', '.join(self.operations[:8])}
 - Constants when needed: {', '.join(self.constants[:3])}
+- PLAIN TEXT only, no extra symbols except basic math: +, -, ×, ÷, =, (), %
 - ENSURE ALL 4 OPTIONS ARE COMPLETELY DIFFERENT
 - NO DUPLICATE ANSWERS OR VALUES
 
@@ -238,7 +262,14 @@ IMPORTANT: Each option must be DIFFERENT and UNIQUE!
             )
             
             questions = self._parse_questions(response.choices[0].message.content)
-            return questions or self._get_dataset_questions(count, topic, language=language)
+            
+            # If AI didn't generate enough questions, supplement with dataset
+            if len(questions) < count:
+                print(f"AI generated only {len(questions)}/{count} questions, supplementing with dataset")
+                dataset_questions = self._get_dataset_questions(count - len(questions), topic, language=language)
+                questions.extend(dataset_questions)
+            
+            return questions[:count] if questions else self._get_dataset_questions(count, topic, language=language)
             
         except Exception as e:
             print(f"Using dataset directly: {e}")
@@ -437,7 +468,13 @@ INCLUDE:
 3. Step-by-step example with numbers
 4. Common DTM patterns
 
-IMPORTANT: Use plain text only. Write formulas like "Area = length × width" not "\text{{Area}} = \text{{length}} \times \text{{width}}". Use × for multiplication, ÷ for division, π for pi.
+FORMATTING:
+- Use clear section headers
+- Add line breaks between sections
+- Use numbered lists for steps
+- Keep sentences short and clear
+
+IMPORTANT: Use plain text only. Write formulas like "Area = length × width". Use only basic math symbols: +, -, ×, ÷, =, (), %, π. No LaTeX, no extra formatting symbols.
 
 Keep under 400 words.
 """

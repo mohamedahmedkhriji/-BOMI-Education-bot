@@ -3,6 +3,7 @@ from telegram.ext import ContextTypes
 from datetime import datetime
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(f"START command received from user {update.effective_user.id}")
     db = context.bot_data['db']
     user_sessions = context.bot_data['user_sessions']
     user_id = update.effective_user.id
@@ -64,7 +65,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
     else:
         username = update.effective_user.username or "no_username"
-        db.create_user(user_id=user_id, full_name="", username=username, chat_id=update.effective_chat.id)
+        print(f"Creating new user: {user_id}, username: {username}")
+        result = db.create_user(user_id=user_id, full_name="", username=username, chat_id=update.effective_chat.id)
+        if result:
+            print(f"User created successfully: {result['id']}")
+        else:
+            print("Failed to create user")
         
         text = "Choose your language / Tilni tanlang:"
         keyboard = [

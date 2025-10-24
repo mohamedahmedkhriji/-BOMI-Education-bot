@@ -2,7 +2,6 @@ import os
 from dotenv import load_dotenv
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 from airtable_db import AirtableDB
-from reminder_scheduler import ReminderScheduler
 
 # Import handlers
 from handlers.start import start
@@ -13,18 +12,15 @@ from handlers.daily_lesson import daily_lesson_command, daily_lesson_callback, h
 
 load_dotenv()
 
-async def post_init(application):
-    """Initialize shared data and scheduler"""
-    application.bot_data['db'] = AirtableDB()
-    application.bot_data['user_sessions'] = {}
-    application.bot_data['processing'] = set()
-    application.bot_data['reminder_scheduler'] = ReminderScheduler(application.bot, application.bot_data['db'])
-    await application.bot_data['reminder_scheduler'].refresh_all_reminders()
-    print("Bot initialized with reminders")
-
 def main():
     token = os.getenv('BOT_TOKEN')
-    app = Application.builder().token(token).post_init(post_init).build()
+    app = Application.builder().token(token).build()
+    
+    # Initialize bot data
+    app.bot_data['db'] = AirtableDB()
+    app.bot_data['user_sessions'] = {}
+    app.bot_data['processing'] = set()
+    print("Bot initialized with Airtable database")
     
     # Command handlers
     app.add_handler(CommandHandler('start', start))
