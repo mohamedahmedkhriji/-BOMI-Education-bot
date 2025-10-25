@@ -11,6 +11,7 @@ from handlers.study_plan import get_study_plan, start_now, set_reminder
 from handlers.daily_lesson import daily_lesson_command, daily_lesson_callback, handle_task_answer, handle_more_practice, handle_next_day, handle_wait_reminder
 from handlers.resume import check_and_resume_user
 from handlers.resume_command import resume_command
+from handlers.completion import handle_extra_practice, handle_view_stats, handle_restart_program, handle_confirm_restart, handle_practice_topic
 
 load_dotenv()
 
@@ -42,6 +43,11 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_more_practice, pattern="^more_practice_"))
     app.add_handler(CallbackQueryHandler(handle_next_day, pattern="^next_day_"))
     app.add_handler(CallbackQueryHandler(handle_wait_reminder, pattern="^wait_reminder_"))
+    app.add_handler(CallbackQueryHandler(handle_extra_practice, pattern="^extra_practice$"))
+    app.add_handler(CallbackQueryHandler(handle_view_stats, pattern="^view_stats$"))
+    app.add_handler(CallbackQueryHandler(handle_restart_program, pattern="^restart_program$"))
+    app.add_handler(CallbackQueryHandler(handle_confirm_restart, pattern="^confirm_restart$"))
+    app.add_handler(CallbackQueryHandler(handle_practice_topic, pattern="^practice_"))
     
     # Text handler
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))

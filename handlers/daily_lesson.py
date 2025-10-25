@@ -140,13 +140,8 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
     
     # Check if user completed 14-day program
     if current_day > 14:
-        lessons_completed = user_data.get('Lessons Completed', '0')
-        test_score = user_data.get('Test Score', '0')
-        
-        msg_uz = f"🎉 Tabriklaymiz! 14 kunlik dasturni yakunladingiz!\n\n📊 Statistika:\n• Darslar: {lessons_completed}\n• Boshlang'ich ball: {test_score}%\n\n🏆 DTM imtihoniga tayyorsiz!\n\nOmad yor bo'lsin! 🚀"
-        msg_en = f"🎉 Congratulations! You've completed the 14-day program!\n\n📊 Stats:\n• Lessons: {lessons_completed}\n• Initial Score: {test_score}%\n\n🏆 You're ready for DTM exam!\n\nGood luck! 🚀"
-        
-        await update.message.reply_text(msg_uz + "\n\n" + msg_en)
+        from handlers.completion import handle_program_completion
+        await handle_program_completion(update, context)
         return
     
     weak_topics = user_data.get('Weak Topics', '').split(', ') if user_data.get('Weak Topics') else []
