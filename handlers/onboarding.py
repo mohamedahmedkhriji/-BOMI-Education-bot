@@ -76,7 +76,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         import re
         if re.match(r'^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$', text):
             db.update_user(user['id'], {
-                'Reminder Time': text,
                 'Timezone': text,
                 'Mode': 'idle',
                 'Expected': 'none',
@@ -147,9 +146,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id = user_data.get('Telegram Chat ID')
                 current_day = user_data.get('Current Day', '1')
                 
-                # Save to both fields for consistency
+                # Save reminder time to Timezone field
                 db.update_user(user['id'], {
-                    'Reminder Time': text,
                     'Timezone': text,
                     'Mode': 'idle',
                     'Expected': 'none',

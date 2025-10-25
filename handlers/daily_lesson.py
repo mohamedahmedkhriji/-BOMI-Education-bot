@@ -580,7 +580,7 @@ async def handle_wait_reminder(update: Update, context: ContextTypes.DEFAULT_TYP
     user = db.get_user(user_id)
     if user:
         lang = user.get('fields', {}).get('Language', 'en')
-        reminder_time = user.get('fields', {}).get('Reminder Time', '') or user.get('fields', {}).get('Timezone', '')
+        reminder_time = user.get('fields', {}).get('Timezone', '')
         
         db.update_user(user['id'], {'Last Active': datetime.now().isoformat()})
         
