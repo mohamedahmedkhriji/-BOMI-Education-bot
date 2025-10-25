@@ -150,7 +150,9 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
     all_topics = weak_topics + ['Algebra', 'Geometry', 'Arithmetic', 'Percentages', 'Fractions', 'Ratios', 'Equations', 'Inequalities', 'Functions', 'Graphs', 'Probability', 'Statistics', 'Number Theory', 'Combinatorics']
     topic = all_topics[current_day - 1] if current_day <= len(all_topics) else 'Review'
     
-    msg = f"⏳ Generating Day {current_day} lesson: {topic}..." if lang == 'en' else f"⏳ {current_day}-kun darsi tayyorlanmoqda: {topic}..."
+    # Show current level in generation message
+    current_level = user_data.get('Level', 'Beginner')
+    msg = f"⏳ Generating Day {current_day} lesson: {topic} ({current_level} level)..." if lang == 'en' else f"⏳ {current_day}-kun darsi tayyorlanmoqda: {topic} ({current_level} daraja)..."
     await update.message.reply_text(msg)
     
     from ai_content import AIContentGenerator
@@ -435,6 +437,18 @@ async def complete_lesson(message, user_id, user_sessions, db):
             }
             
             db.update_user(user['id'], update_fields)
+            
+            # Check for level progression after lesson completion
+            from level_progression import LevelProgression
+            level_system = LevelProgression(db)
+            
+            if level_system.should_level_up(user_id):
+                new_level = level_system.calculate_user_level(user_id)
+                level_system.level_up_user(user_id)
+                
+                # Send level up message
+                level_up_msg = level_system.get_level_up_message(user_id, new_level, lang)
+                await message.reply_text(level_up_msg)
     
     # Split message if feedback is long
     score_msg = f"🎉 Day {session['day']} completed!\n\n📊 Score: {correct}/{total} ({score:.0f}%)" if lang == 'en' else f"🎉 {session['day']}-kun yakunlandi!\n\n📊 Ball: {correct}/{total} ({score:.0f}%)"

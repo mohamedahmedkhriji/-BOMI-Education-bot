@@ -43,8 +43,19 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
         questions = None
         for attempt in range(3):
             try:
-                questions = ai.generate_diagnostic_questions_structured(level=level, language=lang, count=12)
-                print(f"AI generation attempt {attempt + 1} completed")
+                # Get user's target score for difficulty adjustment
+                target_score = int(user_data.get('Expected', '160') or '160')
+                
+                # Adjust level based on target score
+                if target_score >= 180:
+                    adjusted_level = 'Advanced'
+                elif target_score >= 160:
+                    adjusted_level = 'Intermediate' if level == 'Beginner' else level
+                else:
+                    adjusted_level = level
+                
+                questions = ai.generate_diagnostic_questions_structured(level=adjusted_level, language=lang, count=12)
+                print(f"AI generation attempt {attempt + 1} completed for {adjusted_level} level (target: {target_score})")
                 
                 # Validate we have exactly 12 questions
                 if questions and len(questions) == 12:
@@ -223,7 +234,8 @@ async def show_results(query, user_id, user_sessions, db):
             'Expected': 'none',
             'Active Quiz Session ID': '',
             'Last Active': datetime.now().isoformat(),
-            'Level': 'Beginner' if percentage < 40 else 'Intermediate' if percentage < 75 else 'Advanced'
+            'Level': 'Beginner' if percentage < 40 else 'Intermediate' if percentage < 75 else 'Advanced',
+            'Initial Level': user_data.get('Level', 'Beginner')  # Store original level
         })
     
     text = f"🎉 Test completed!\n\n📊 Results:\n• Score: {correct}/12 ({percentage:.0f}%)\n• Strong: {', '.join(strongest)}\n• Weak: {', '.join(weakest)}\n\n🎯 Target: {target}"
