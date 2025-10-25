@@ -94,6 +94,7 @@ async def resume_lesson(message, user_id, lesson_record_id, user_sessions, db, l
         return False
 
 async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(f"DAILY_LESSON command received from user {update.effective_user.id}")
     db = context.bot_data['db']
     user_sessions = context.bot_data['user_sessions']
     user_id = update.effective_user.id
@@ -161,7 +162,7 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
         # Generate theory using AI and dataset
         theory = ai.generate_theory_explanation(topic, lang)
         
-        questions = ai.generate_practice_questions(topic, lang, count=5)
+        questions = ai.generate_practice_questions(topic, lang, count=5, user_level=user_level)
         
         # Validate questions before proceeding
         if not questions:
@@ -508,7 +509,9 @@ async def handle_more_practice(update: Update, context: ContextTypes.DEFAULT_TYP
     ai = AIContentGenerator()
     
     try:
-        questions = ai.generate_practice_questions(topic, lang, count=5)
+        # Get user level for difficulty adaptation
+        user_level = user_data.get('Level', 'Intermediate')
+        questions = ai.generate_practice_questions(topic, lang, count=5, user_level=user_level)
         
         if not questions or len(questions) < 5:
             await query.message.reply_text("Error generating questions. Please try again.")

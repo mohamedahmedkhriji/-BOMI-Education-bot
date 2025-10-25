@@ -167,6 +167,37 @@ INSTRUCTIONS:
                 
                 lang_instructions = self._get_language_instructions(language)
                 
+                # Enhanced difficulty-specific prompts
+                difficulty_instructions = {
+            'Beginner': f"""
+DIFFICULTY: BEGINNER LEVEL
+- Use simple arithmetic operations (+, -, ×, ÷)
+- Problems should be 1-2 steps maximum
+- Use whole numbers and simple fractions
+- Avoid complex formulas or equations
+- Focus on basic concepts: addition, subtraction, multiplication, division, percentages
+- Question length: 50-100 words maximum
+- Examples: "What is 25% of 80?" or "If 3 apples cost $6, how much do 5 apples cost?""",
+            
+            'Intermediate': f"""
+DIFFICULTY: INTERMEDIATE LEVEL  
+- Use moderate complexity problems (2-3 steps)
+- Include basic algebra, geometry, and word problems
+- Use decimals, fractions, and simple equations
+- Introduce concepts like area, perimeter, ratios
+- Question length: 75-150 words
+- Examples: "Solve for x: 2x + 5 = 15" or "Find the area of a rectangle with length 8m and width 5m""",
+            
+            'Advanced': f"""
+DIFFICULTY: ADVANCED LEVEL
+- Use complex multi-step problems (3+ steps)
+- Include advanced algebra, geometry, physics concepts
+- Use quadratic equations, trigonometry, logarithms
+- Complex word problems with multiple variables
+- Question length: 100-200 words
+- Examples: "A projectile is fired at 45° with initial velocity 20m/s. Find maximum height" or "Solve the system: 2x + 3y = 12, x - y = 1"""
+                }
+                
                 prompt = f"""
 {self.training_context}
 
@@ -174,13 +205,16 @@ You are an expert DTM exam question generator trained on {len(self.full_dataset)
 
 {lang_instructions}
 
-STUDY THESE EXAMPLES:
+{difficulty_instructions.get(level, difficulty_instructions['Intermediate'])}
+
+STUDY THESE {level.upper()} LEVEL EXAMPLES:
 {self._format_comprehensive_examples(training_examples)}
 
-GENERATE EXACTLY {count} COMPLETE questions in {lang_text} at {difficulty} level. MUST have {count} questions, no more, no less.
+GENERATE EXACTLY {count} COMPLETE questions in {lang_text} at {level.upper()} level. MUST have {count} questions, no more, no less.
 
 RULES:
 - Follow DTM exam format exactly
+- Match {level.upper()} difficulty level precisely
 - Use mathematical constants: {', '.join(self.constants[:5])}
 - Apply operations: {', '.join(self.operations[:10])}
 - PLAIN TEXT only, no LaTeX, no extra symbols
@@ -229,7 +263,7 @@ IMPORTANT: Each option must be DIFFERENT and UNIQUE!
         print("AI generation completed")
         return self._get_dataset_questions(count, language=language)
     
-    def generate_practice_questions(self, topic, language='uz', count=5):
+    def generate_practice_questions(self, topic, language='uz', count=5, user_level='Intermediate'):
         """Generate practice questions using comprehensive dataset training"""
         # Validate language
         language = self._validate_language(language)
@@ -240,15 +274,34 @@ IMPORTANT: Each option must be DIFFERENT and UNIQUE!
         # Language-specific instructions
         lang_instructions = self._get_language_instructions(language)
         
+        # Get user level for difficulty adaptation
+        user_level = 'Intermediate'  # Default
+        try:
+            # Try to get user level from context if available
+            user_level = context.get('user_level', 'Intermediate') if 'context' in locals() else 'Intermediate'
+        except:
+            pass
+            
+        level_instructions = {
+            'Beginner': f"Generate SIMPLE {topic} problems suitable for beginners. Use basic operations and 1-2 steps maximum.",
+            'Intermediate': f"Generate MODERATE {topic} problems with 2-3 steps. Include some algebra and geometry concepts.", 
+            'Advanced': f"Generate COMPLEX {topic} problems with multiple steps. Use advanced mathematical concepts."
+        }
+        
         prompt = f"""
 {self.training_context}
 
 {lang_instructions}
 
+TOPIC: {topic.upper()}
+LEVEL: {user_level.upper()}
+
+{level_instructions.get(user_level, level_instructions['Intermediate'])}
+
 TOPIC-SPECIFIC TRAINING for {topic}:
 {self._format_comprehensive_examples(topic_examples)}
 
-GENERATE {count} DTM questions in {lang_text} about {topic}.
+GENERATE {count} DTM questions in {lang_text} about {topic} at {user_level.upper()} level.
 
 USE DATASET PATTERNS:
 - Problem structure from {len(topic_examples)} examples
@@ -257,6 +310,7 @@ USE DATASET PATTERNS:
 - PLAIN TEXT only, no extra symbols except basic math: +, -, ×, ÷, =, (), %
 - ENSURE ALL 4 OPTIONS ARE COMPLETELY DIFFERENT
 - NO DUPLICATE ANSWERS OR VALUES
+- MATCH {user_level.upper()} DIFFICULTY LEVEL
 
 Format:
 QUESTION: [text]
@@ -349,17 +403,61 @@ IMPORTANT: Each option must be DIFFERENT and UNIQUE!
         return questions
     
     def _get_comprehensive_examples(self, level, count=10):
-        """Get examples from full dataset based on difficulty"""
+        """Get examples from full dataset based on difficulty with enhanced filtering"""
         if not self.full_dataset:
             return []
         
-        # Filter by complexity for level
+        # Enhanced difficulty filtering
         if level == 'Beginner':
-            filtered = [p for p in self.full_dataset if p.get('category') in ['general', 'gain']]
+            # Simple arithmetic, basic algebra, short problems
+            filtered = []
+            for p in self.full_dataset:
+                text = p.get('Problem', '').lower()
+                category = p.get('category', '')
+                
+                # Beginner criteria: short problems, basic operations
+                if (len(text) < 150 and 
+                    category in ['general', 'gain'] and
+                    any(word in text for word in ['add', 'subtract', 'multiply', 'divide', 'sum', 'difference', 'simple']) and
+                    not any(word in text for word in ['equation', 'formula', 'complex', 'derivative', 'integral'])):
+                    filtered.append(p)
+                    
         elif level == 'Advanced':
-            filtered = [p for p in self.full_dataset if p.get('category') in ['physics', 'geometry', 'probability']]
-        else:
-            filtered = self.full_dataset
+            # Complex problems, multiple steps, advanced concepts
+            filtered = []
+            for p in self.full_dataset:
+                text = p.get('Problem', '').lower()
+                category = p.get('category', '')
+                
+                # Advanced criteria: longer problems, complex operations
+                if (len(text) > 100 and
+                    category in ['physics', 'geometry', 'probability'] and
+                    any(word in text for word in ['equation', 'formula', 'calculate', 'determine', 'complex', 'system']) and
+                    ('²' in text or '^' in text or 'sqrt' in text or 'log' in text)):
+                    filtered.append(p)
+                    
+        else:  # Intermediate
+            # Medium complexity problems
+            filtered = []
+            for p in self.full_dataset:
+                text = p.get('Problem', '').lower()
+                category = p.get('category', '')
+                
+                # Intermediate criteria: moderate length and complexity
+                if (50 < len(text) < 200 and
+                    category in ['general', 'geometry', 'gain'] and
+                    any(word in text for word in ['find', 'solve', 'calculate']) and
+                    not any(word in text for word in ['complex', 'advanced', 'derivative'])):
+                    filtered.append(p)
+        
+        # Fallback to category-based filtering if enhanced filtering yields too few results
+        if len(filtered) < count:
+            if level == 'Beginner':
+                filtered = [p for p in self.full_dataset if p.get('category') in ['general', 'gain']]
+            elif level == 'Advanced':
+                filtered = [p for p in self.full_dataset if p.get('category') in ['physics', 'geometry', 'probability']]
+            else:
+                filtered = [p for p in self.full_dataset if p.get('category') in ['general', 'geometry', 'gain']]
         
         return random.sample(filtered, min(count, len(filtered)))
     
