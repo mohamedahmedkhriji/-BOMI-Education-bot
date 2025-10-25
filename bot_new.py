@@ -9,6 +9,8 @@ from handlers.onboarding import language_selected, level_selected, handle_text
 from handlers.diagnostic_test import start_test, handle_answer
 from handlers.study_plan import get_study_plan, start_now, set_reminder
 from handlers.daily_lesson import daily_lesson_command, daily_lesson_callback, handle_task_answer, handle_more_practice, handle_next_day, handle_wait_reminder
+from handlers.resume import check_and_resume_user
+from handlers.resume_command import resume_command
 
 load_dotenv()
 
@@ -25,6 +27,7 @@ def main():
     # Command handlers
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('daily_lesson', daily_lesson_command))
+    app.add_handler(CommandHandler('resume', resume_command))
     
     # Callback handlers
     app.add_handler(CallbackQueryHandler(language_selected, pattern="^lang_"))

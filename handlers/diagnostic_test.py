@@ -71,6 +71,10 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session_id = db.create_quiz_session(user_id, questions)
         print(f"Created quiz session: {session_id}")
         
+        # Save active quiz session ID to database
+        if user:
+            db.update_user(user['id'], {'Active Quiz Session ID': session_id})
+        
         user_sessions[user_id] = {
             'current_question': 0,
             'answers': [],
@@ -225,5 +229,10 @@ async def show_results(query, user_id, user_sessions, db):
     text = f"🎉 Test completed!\n\n📊 Results:\n• Score: {correct}/12 ({percentage:.0f}%)\n• Strong: {', '.join(strongest)}\n• Weak: {', '.join(weakest)}\n\n🎯 Target: {target}"
     keyboard = [[InlineKeyboardButton("📅 Get Plan", callback_data="get_plan")]]
     await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    # Clear active quiz session ID
+    user = db.get_user(user_id)
+    if user:
+        db.update_user(user['id'], {'Active Quiz Session ID': ''})
     
     user_sessions.pop(user_id, None)

@@ -14,6 +14,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     existing_user = db.get_user(user_id)
     
     if existing_user:
+        # Check if user has incomplete state to resume
+        from handlers.resume import check_and_resume_user
+        resumed = await check_and_resume_user(update, context)
+        
+        if resumed:
+            return
+        
         user_data = existing_user.get('fields', {})
         db.update_user(existing_user['id'], {'Last Active': datetime.now().isoformat()})
         
