@@ -113,6 +113,7 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
     
     if learning_status != 'In Progress':
         if learning_status == 'Test Completed':
+            lang = user_data.get('Language', 'en')
             if lang == 'uz':
                 msg = "📅 Avval o'quv rejangizni ko'ring va boshlang!\n\nQuyidagi tugmani bosing:"
                 btn_text = "📅 Rejani ko'rish"
