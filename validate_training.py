@@ -40,30 +40,33 @@ def calculate_complexity(text):
     score = 0
     text_lower = text.lower()
     
-    # Length factor (0-2 points)
-    if len(text) > 150:
+    # Length factor (0-3 points)
+    if len(text) > 200:
+        score += 3
+    elif len(text) > 150:
         score += 2
     elif len(text) > 100:
         score += 1
     
-    # Mathematical complexity (0-3 points)
-    complex_terms = ['equation', 'formula', 'system', 'quadratic', 'derivative', 'integral']
-    score += min(3, sum(1 for term in complex_terms if term in text_lower))
+    # Advanced mathematical symbols (0-3 points)
+    advanced_symbols = ['²', '³', '^', '√', 'log', 'sin', 'cos', 'tan', 'π', 'θ', 'α', 'β']
+    symbol_count = sum(1 for symbol in advanced_symbols if symbol in text)
+    score += min(3, symbol_count)
     
-    # Operations complexity (0-2 points)
-    if any(symbol in text for symbol in ['²', '^', '√', 'log']):
-        score += 2
-    elif any(word in text_lower for word in ['multiply', 'divide', 'calculate']):
-        score += 1
+    # Complex mathematical terms (0-3 points)
+    complex_terms = ['quadratic', 'polynomial', 'derivative', 'integral', 'matrix', 'vector', 'trigonometric', 'logarithmic', 'exponential', 'parabola', 'hyperbola', 'ellipse', 'optimization', 'calculus']
+    term_count = sum(1 for term in complex_terms if term in text_lower)
+    score += min(3, term_count)
     
-    # Multi-step indicators (0-2 points)
-    step_indicators = ['first', 'then', 'next', 'finally', 'step']
-    score += min(2, sum(1 for indicator in step_indicators if indicator in text_lower))
+    # Multi-step complexity (0-2 points)
+    multi_step = ['system of equations', 'solve for', 'find the value', 'determine', 'calculate', 'given that', 'if and only if', 'subject to']
+    step_count = sum(1 for indicator in multi_step if indicator in text_lower)
+    score += min(2, step_count)
     
-    # Advanced concepts (0-1 point)
-    advanced_concepts = ['trigonometry', 'logarithm', 'exponential', 'matrix', 'vector']
-    if any(concept in text_lower for concept in advanced_concepts):
-        score += 1
+    # Physics/Advanced concepts (0-2 points)
+    physics_concepts = ['velocity', 'acceleration', 'projectile', 'momentum', 'energy', 'wave', 'frequency', 'amplitude', 'thermodynamics', 'mechanics']
+    physics_count = sum(1 for concept in physics_concepts if concept in text_lower)
+    score += min(2, physics_count)
     
     return min(10, score)
 

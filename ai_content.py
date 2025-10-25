@@ -189,13 +189,17 @@ DIFFICULTY: INTERMEDIATE LEVEL
 - Examples: "Solve for x: 2x + 5 = 15" or "Find the area of a rectangle with length 8m and width 5m""",
             
             'Advanced': f"""
-DIFFICULTY: ADVANCED LEVEL
-- Use complex multi-step problems (3+ steps)
-- Include advanced algebra, geometry, physics concepts
-- Use quadratic equations, trigonometry, logarithms
-- Complex word problems with multiple variables
-- Question length: 100-200 words
-- Examples: "A projectile is fired at 45° with initial velocity 20m/s. Find maximum height" or "Solve the system: 2x + 3y = 12, x - y = 1"""
+DIFFICULTY: ADVANCED LEVEL - DTM EXAM COMPLEXITY
+- Use highly complex multi-step problems (4+ steps)
+- Include advanced calculus, physics, complex geometry
+- MUST use: quadratic equations, trigonometry, logarithms, exponentials
+- Include systems of equations, optimization problems
+- Use advanced mathematical symbols: ², ³, √, sin, cos, tan, log
+- Complex word problems with multiple variables and constraints
+- Question length: 150-300 words
+- Examples: "A particle moves along y = x² - 4x + 3. Find velocity when acceleration = 0" or "Solve: log₂(x+1) + log₂(x-1) = 3"
+- Include physics concepts: projectile motion, waves, thermodynamics
+- Geometry: conic sections, 3D problems, coordinate geometry"""
                 }
                 
                 prompt = f"""
@@ -285,7 +289,7 @@ IMPORTANT: Each option must be DIFFERENT and UNIQUE!
         level_instructions = {
             'Beginner': f"Generate SIMPLE {topic} problems suitable for beginners. Use basic operations and 1-2 steps maximum.",
             'Intermediate': f"Generate MODERATE {topic} problems with 2-3 steps. Include some algebra and geometry concepts.", 
-            'Advanced': f"Generate COMPLEX {topic} problems with multiple steps. Use advanced mathematical concepts."
+            'Advanced': f"Generate HIGHLY COMPLEX {topic} problems with 4+ steps. MUST include advanced calculus, trigonometry, logarithms, or physics concepts. Use mathematical symbols like ², √, sin, cos, log. Create DTM exam-level difficulty."
         }
         
         prompt = f"""
@@ -427,13 +431,37 @@ IMPORTANT: Each option must be DIFFERENT and UNIQUE!
             filtered = []
             for p in self.full_dataset:
                 text = p.get('Problem', '').lower()
+                original_text = p.get('Problem', '')
                 category = p.get('category', '')
                 
-                # Advanced criteria: longer problems, complex operations
-                if (len(text) > 100 and
-                    category in ['physics', 'geometry', 'probability'] and
-                    any(word in text for word in ['equation', 'formula', 'calculate', 'determine', 'complex', 'system']) and
-                    ('²' in text or '^' in text or 'sqrt' in text or 'log' in text)):
+                # Enhanced Advanced criteria: much more selective
+                complexity_score = 0
+                
+                # Length factor (longer = more complex)
+                if len(text) > 200: complexity_score += 3
+                elif len(text) > 150: complexity_score += 2
+                elif len(text) > 100: complexity_score += 1
+                
+                # Advanced mathematical symbols
+                if any(symbol in original_text for symbol in ['²', '³', '^', '√', 'log', 'sin', 'cos', 'tan']):
+                    complexity_score += 3
+                
+                # Complex mathematical terms
+                advanced_terms = ['quadratic', 'polynomial', 'derivative', 'integral', 'matrix', 'vector', 'trigonometric', 'logarithmic', 'exponential', 'parabola', 'hyperbola', 'ellipse']
+                complexity_score += sum(2 for term in advanced_terms if term in text)
+                
+                # Multi-step indicators
+                multi_step = ['system of equations', 'solve for', 'find the value', 'determine', 'calculate', 'given that', 'if and only if']
+                complexity_score += sum(1 for indicator in multi_step if indicator in text)
+                
+                # Advanced categories with higher weight
+                if category in ['physics', 'probability']:
+                    complexity_score += 2
+                elif category == 'geometry':
+                    complexity_score += 1
+                
+                # Only include if complexity score is high enough
+                if complexity_score >= 5 and category in ['physics', 'geometry', 'probability']:
                     filtered.append(p)
                     
         else:  # Intermediate
