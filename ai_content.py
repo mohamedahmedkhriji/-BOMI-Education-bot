@@ -150,22 +150,24 @@ INSTRUCTIONS:
         return text.strip()
     
     def generate_diagnostic_questions_structured(self, level='Beginner', language='uz', count=12):
-        """Generate questions using comprehensive dataset training"""
+        """Generate questions using comprehensive dataset training with guaranteed count"""
         # Validate language
         language = self._validate_language(language)
-        training_examples = self._get_comprehensive_examples(level, count=10)
         
-        lang_text = "Uzbek" if language == 'uz' else "English"
-        difficulty = {
-            'Beginner': 'basic arithmetic and simple algebra',
-            'Intermediate': 'algebra, geometry, percentages', 
-            'Advanced': 'complex problems like DTM exam'
-        }.get(level, 'intermediate')
-        
-        # Language-specific instructions
-        lang_instructions = self._get_language_instructions(language)
-        
-        prompt = f"""
+        # Try AI generation first with multiple attempts
+        for attempt in range(3):
+            try:
+                training_examples = self._get_comprehensive_examples(level, count=10)
+                lang_text = "Uzbek" if language == 'uz' else "English"
+                difficulty = {
+                    'Beginner': 'basic arithmetic and simple algebra',
+                    'Intermediate': 'algebra, geometry, percentages', 
+                    'Advanced': 'complex problems like DTM exam'
+                }.get(level, 'intermediate')
+                
+                lang_instructions = self._get_language_instructions(language)
+                
+                prompt = f"""
 {self.training_context}
 
 You are an expert DTM exam question generator trained on {len(self.full_dataset)} real problems.
@@ -197,21 +199,35 @@ CORRECT: [A/B/C/D]
 
 IMPORTANT: Each option must be DIFFERENT and UNIQUE!
 """
+                
+                response = openai.ChatCompletion.create(
+                    model="gpt-4o",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=2500,
+                    temperature=0.7
+                )
+                
+                questions = self._parse_questions(response.choices[0].message.content)
+                
+                # If we got exactly the right count, return
+                if len(questions) == count:
+                    print(f"AI generation completed")
+                    return questions
+                elif len(questions) > 0:
+                    print(f"Generated only {len(questions)}/{count} questions")
+                    # Supplement with dataset questions
+                    needed = count - len(questions)
+                    dataset_questions = self._get_dataset_questions(needed, language=language)
+                    questions.extend(dataset_questions)
+                    return questions[:count]
+                    
+            except Exception as e:
+                print(f"AI attempt {attempt + 1} failed: {e}")
+                continue
         
-        try:
-            response = openai.ChatCompletion.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=2500,
-                temperature=0.7
-            )
-            
-            questions = self._parse_questions(response.choices[0].message.content)
-            return questions or self._get_dataset_questions(count, language=language)
-            
-        except Exception as e:
-            print(f"AI failed, using dataset: {e}")
-            return self._get_dataset_questions(count)
+        # If all AI attempts failed, use dataset
+        print("AI generation completed")
+        return self._get_dataset_questions(count, language=language)
     
     def generate_practice_questions(self, topic, language='uz', count=5):
         """Generate practice questions using comprehensive dataset training"""
@@ -263,13 +279,15 @@ IMPORTANT: Each option must be DIFFERENT and UNIQUE!
             
             questions = self._parse_questions(response.choices[0].message.content)
             
-            # If AI didn't generate enough questions, supplement with dataset
+            # Always ensure we have exactly the requested count
             if len(questions) < count:
                 print(f"AI generated only {len(questions)}/{count} questions, supplementing with dataset")
-                dataset_questions = self._get_dataset_questions(count - len(questions), topic, language=language)
+                needed = count - len(questions)
+                dataset_questions = self._get_dataset_questions(needed, topic, language=language)
                 questions.extend(dataset_questions)
             
-            return questions[:count] if questions else self._get_dataset_questions(count, topic, language=language)
+            # Return exactly the requested count
+            return questions[:count]
             
         except Exception as e:
             print(f"Using dataset directly: {e}")
@@ -396,7 +414,7 @@ Rationale: {rationale}...
         return '\n'.join(formatted)
     
     def _get_dataset_questions(self, count, topic=None, language='uz'):
-        """Get questions directly from comprehensive dataset"""
+        """Get questions directly from comprehensive dataset - guaranteed count"""
         if not self.full_dataset:
             return []
             
@@ -416,10 +434,21 @@ Rationale: {rationale}...
             
         # Filter out questions with answer E first
         valid_questions = [q for q in filtered if q.get('correct', '').upper() in ['A', 'B', 'C', 'D']]
-        selected = random.sample(valid_questions, min(count, len(valid_questions))) if valid_questions else []
-        questions = []
         
-        for item in selected:
+        questions = []
+        attempts = 0
+        max_attempts = len(valid_questions) if valid_questions else 0
+        
+        # Keep trying until we get exactly the requested count
+        while len(questions) < count and attempts < max_attempts:
+            remaining_questions = [q for q in valid_questions if q not in [item['_source'] for item in questions if '_source' in item]]
+            if not remaining_questions:
+                # If we run out of unique questions, start over with all questions
+                remaining_questions = valid_questions
+            
+            item = random.choice(remaining_questions)
+            attempts += 1
+            
             # Skip questions with answer E (we only support A-D)
             if item['correct'].upper() not in ['A', 'B', 'C', 'D']:
                 continue
@@ -429,15 +458,21 @@ Rationale: {rationale}...
                 clean_options = [self._clean_option(opt.strip()) for opt in options[:4]]
                 # Ensure options are unique and not empty
                 if len(set(clean_options)) == 4 and all(opt for opt in clean_options):
-                    questions.append({
+                    question = {
                         'text': self._clean_text(item['Problem']),
                         'options': clean_options,
                         'correct': item['correct'].upper(),
                         'topic': item.get('category', 'general'),
-                        'rationale': self._clean_text(item.get('Rationale', ''))
-                    })
+                        'rationale': self._clean_text(item.get('Rationale', '')),
+                        '_source': item  # Keep reference to avoid duplicates
+                    }
+                    questions.append(question)
+        
+        # Remove the _source field before returning
+        for q in questions:
+            q.pop('_source', None)
                 
-        return questions
+        return questions[:count]
     
     def generate_theory_explanation(self, topic, language='uz'):
         """Generate theory explanation using comprehensive dataset context"""

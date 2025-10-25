@@ -39,24 +39,34 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await query.message.reply_text("⏳ Generating questions... Please wait.")
         
-        try:
-            questions = ai.generate_diagnostic_questions_structured(level=level, language=lang, count=12)
-            print("AI generation completed")
-        except Exception as e:
-            print(f"AI Generation Error: {e}")
-            import traceback
-            traceback.print_exc()
-            await query.message.reply_text(f"Error generating questions: {str(e)}")
+        # Try multiple times to ensure we get exactly 12 questions
+        questions = None
+        for attempt in range(3):
+            try:
+                questions = ai.generate_diagnostic_questions_structured(level=level, language=lang, count=12)
+                print(f"AI generation attempt {attempt + 1} completed")
+                
+                # Validate we have exactly 12 questions
+                if questions and len(questions) == 12:
+                    print(f"Successfully generated {len(questions)} questions")
+                    break
+                else:
+                    print(f"Attempt {attempt + 1}: Generated only {len(questions) if questions else 0}/12 questions")
+                    questions = None
+                    
+            except Exception as e:
+                print(f"AI Generation Error (attempt {attempt + 1}): {e}")
+                questions = None
+                continue
+        
+        # Final validation
+        if not questions or len(questions) != 12:
+            print(f"Failed to generate exactly 12 questions after 3 attempts")
+            await query.message.reply_text("Unable to generate complete test. Please try again in a moment.")
             processing.discard(key)
             return
         
-        if not questions or len(questions) < 12:
-            print(f"Generated only {len(questions) if questions else 0}/12 questions")
-            await query.message.reply_text(f"Generated only {len(questions) if questions else 0} questions. Please try again.")
-            processing.discard(key)
-            return
-        
-        print(f"Generated {len(questions)} questions for level {level} in {lang}")
+        print(f"Successfully generated {len(questions)} questions for level {level} in {lang}")
         
         session_id = db.create_quiz_session(user_id, questions)
         print(f"Created quiz session: {session_id}")
