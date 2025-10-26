@@ -3,7 +3,7 @@
 # BOMI Bot Service Setup Script
 
 SERVICE_NAME="bomi-bot"
-BOT_DIR="/root/bomi-bot"
+BOT_DIR="/root/-BOMI-Education-bot"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
 echo "Creating systemd service for BOMI Bot..."
@@ -21,8 +21,8 @@ WorkingDirectory=${BOT_DIR}
 ExecStart=/usr/bin/python3 ${BOT_DIR}/start_bot.py
 Restart=always
 RestartSec=10
-StandardOutput=append:${BOT_DIR}/bot.log
-StandardError=append:${BOT_DIR}/bot.log
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
