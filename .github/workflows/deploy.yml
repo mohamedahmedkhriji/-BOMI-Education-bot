@@ -15,7 +15,7 @@ jobs:
         username: ${{ secrets.VPS_USERNAME }}
         key: ${{ secrets.VPS_SSH_KEY }}
         script: |
-          cd /root/bomi-bot
+          cd /root/-BOMI-Education-bot
           git pull origin main
           systemctl restart bomi-bot
           echo "Bot deployed successfully"
