@@ -21,33 +21,52 @@ class AIContentGenerator:
         datasets = []
         files = ['train.json', 'dev.json', 'test.json', 'challenge_test.json']
         
+        # Try multiple paths
+        base_paths = [
+            '/root/aymen/math',
+            '../aymen/math',
+            'c:/Users/Ahmed/Desktop/aymen/math'
+        ]
+        
         for file in files:
-            try:
-                path = f"../aymen/math/{file}"
-                with open(path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    datasets.extend(data)
-                    print(f"Loaded {len(data)} problems from {file}")
-            except Exception as e:
-                print(f"Failed to load {file}: {e}")
+            loaded = False
+            for base_path in base_paths:
+                try:
+                    path = f"{base_path}/{file}"
+                    with open(path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        datasets.extend(data)
+                        print(f"Loaded {len(data)} problems from {file}")
+                        loaded = True
+                        break
+                except Exception:
+                    continue
+            if not loaded:
+                print(f"Failed to load {file} from any path")
         
         return datasets
     
     def _load_constants(self):
         """Load mathematical constants"""
-        try:
-            with open('../aymen/math/constant_list.txt', 'r') as f:
-                return [line.strip() for line in f if line.strip()]
-        except:
-            return []
+        base_paths = ['/root/aymen/math', '../aymen/math', 'c:/Users/Ahmed/Desktop/aymen/math']
+        for base_path in base_paths:
+            try:
+                with open(f'{base_path}/constant_list.txt', 'r') as f:
+                    return [line.strip() for line in f if line.strip()]
+            except:
+                continue
+        return []
     
     def _load_operations(self):
         """Load mathematical operations"""
-        try:
-            with open('../aymen/math/operation_list.txt', 'r') as f:
-                return [line.strip() for line in f if line.strip()]
-        except:
-            return []
+        base_paths = ['/root/aymen/math', '../aymen/math', 'c:/Users/Ahmed/Desktop/aymen/math']
+        for base_path in base_paths:
+            try:
+                with open(f'{base_path}/operation_list.txt', 'r') as f:
+                    return [line.strip() for line in f if line.strip()]
+            except:
+                continue
+        return []
     
     def _build_training_context(self):
         """Build comprehensive training context from all data"""
@@ -344,8 +363,17 @@ IMPORTANT: Each option must be DIFFERENT and UNIQUE!
             return questions[:count]
             
         except Exception as e:
-            print(f"Using dataset directly: {e}")
-            return self._get_dataset_questions(count, topic)
+            print(f"AI generation failed: {e}")
+            # Always return dataset questions as fallback
+            dataset_questions = self._get_dataset_questions(count, topic, language=language)
+            if len(dataset_questions) >= count:
+                return dataset_questions[:count]
+            # If still not enough, pad with random questions
+            while len(dataset_questions) < count:
+                random_q = self._get_dataset_questions(1, language=language)
+                if random_q:
+                    dataset_questions.extend(random_q)
+            return dataset_questions[:count]
     
     def _parse_questions(self, content):
         """Parse AI response into structured question format"""
