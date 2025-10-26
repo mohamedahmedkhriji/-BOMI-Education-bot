@@ -101,6 +101,7 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
     
     # Prevent duplicate lesson generation
     if user_id in user_sessions:
+        print(f"User {user_id} already has active session, skipping")
         return
     
     user = db.get_user(user_id)
@@ -111,6 +112,8 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
     
     user_data = user.get('fields', {})
     learning_status = user_data.get('Learning Status', '')
+    
+    print(f"User {user_id} learning status: {learning_status}")
     
     if learning_status != 'In Progress':
         if learning_status == 'Test Completed':
@@ -140,9 +143,13 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
             return
     
     # Check if user completed 14-day program
-    if current_day > 14:
-        from handlers.completion import handle_program_completion
-        await handle_program_completion(update, context)
+    if current_day > 14 or (current_day == 14 and user_data.get('Learning Status') == 'Completed'):
+        # Show final test option
+        lang = user_data.get('Language', 'en')
+        final_msg = "🎯 You've completed the 14-day program!\n\nTake your final test to see your improvement:" if lang == 'en' else "🎯 14 kunlik dastur yakunlangan!\n\nYaxshilanishingizni ko'rish uchun yakuniy testni topshiring:"
+        
+        keyboard = [[InlineKeyboardButton("🎯 Take Final Test" if lang == 'en' else "🎯 Yakuniy Test", callback_data="final_test")]]
+        await update.message.reply_text(final_msg, reply_markup=InlineKeyboardMarkup(keyboard))
         return
     
     weak_topics = user_data.get('Weak Topics', '').split(', ') if user_data.get('Weak Topics') else []
@@ -152,8 +159,10 @@ async def daily_lesson_command(update: Update, context: ContextTypes.DEFAULT_TYP
     
     # Show current level in generation message
     current_level = user_data.get('Level', 'Beginner')
-    msg = f"⏳ Generating Day {current_day} lesson: {topic} ({current_level} level)..." if lang == 'en' else f"⏳ {current_day}-kun darsi tayyorlanmoqda: {topic} ({current_level} daraja)..."
-    await update.message.reply_text(msg)
+    
+    # Send initial waiting message
+    wait_msg = f"⏳ Please wait...\n\nGenerating Day {current_day} lesson: {topic} ({current_level} level)\n\nThis may take a moment..." if lang == 'en' else f"⏳ Iltimos kuting...\n\n{current_day}-kun darsi tayyorlanmoqda: {topic} ({current_level} daraja)\n\nBir oz vaqt ketishi mumkin..."
+    await update.message.reply_text(wait_msg)
     
     from ai_content import AIContentGenerator
     ai = AIContentGenerator()
@@ -353,6 +362,10 @@ async def handle_task_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # Check if this was the last task
     if session['current_task'] >= len(session['questions']):
         print("ALL TASKS COMPLETED! Calling complete_lesson...")
+        # Show waiting message
+        lang = session.get('lang', 'en')
+        wait_msg = "⏳ Analyzing your answers..." if lang == 'en' else "⏳ Javoblaringiz tahlil qilinmoqda..."
+        await query.message.reply_text(wait_msg)
         await asyncio.sleep(0.5)
         from airtable_db import AirtableDB
         db = AirtableDB()
@@ -553,32 +566,61 @@ async def handle_more_practice(update: Update, context: ContextTypes.DEFAULT_TYP
 async def handle_next_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = context.bot_data['db']
     user_sessions = context.bot_data['user_sessions']
+    processing = context.bot_data.get('processing', set())
     query = update.callback_query
-    await query.answer()
     
     user_id = int(query.data.split('_')[2])
-    user_sessions.pop(user_id, None)
+    key = f"next_day_{user_id}"
     
-    user = db.get_user(user_id)
-    if user:
-        lang = user.get('fields', {}).get('Language', 'en')
-        current_day = int(user.get('fields', {}).get('Current Day', '1'))
-        next_day = current_day + 1
+    # Prevent duplicate processing
+    if key in processing:
+        await query.answer("Processing...")
+        return
+    
+    processing.add(key)
+    
+    try:
+        await query.answer()
+        user_sessions.pop(user_id, None)
         
-        # Progress to next day
-        update_fields = {
-            'Current Day': str(next_day),
-            'Last Active': datetime.now().isoformat()
-        }
-        
-        # Mark as completed if finished 14 days
-        if next_day > 14:
-            update_fields['Learning Status'] = 'Completed'
-        
-        db.update_user(user['id'], update_fields)
-        
-        msg = f"✅ Great! Ready for Day {next_day}?\n\nUse /daily_lesson anytime to start!" if lang == 'en' else f"✅ Ajoyib! {next_day}-kun uchun tayyormisiz?\n\nIstalgan vaqt /daily_lesson buyrug'ini yuboring!"
-        await query.message.reply_text(msg)
+        user = db.get_user(user_id)
+        if user:
+            lang = user.get('fields', {}).get('Language', 'en')
+            current_day = int(user.get('fields', {}).get('Current Day', '1'))
+            next_day = current_day + 1
+            
+            # Progress to next day
+            update_fields = {
+                'Current Day': str(next_day),
+                'Last Active': datetime.now().isoformat()
+            }
+            
+            # Check if completing 14 days - trigger final test
+            if current_day == 14:
+                update_fields['Learning Status'] = 'Completed'
+                update_fields['Current Day'] = '14'  # Keep at 14, don't increment
+                
+                # Show final test message
+                final_msg = "🎉 CONGRATULATIONS! You've completed the 14-day DTM preparation program!\n\n🎯 Time for your FINAL TEST to see your knowledge improvement!" if lang == 'en' else "🎉 TABRIKLAYMIZ! 14 kunlik DTM tayyorgarlik dasturini yakunladingiz!\n\n🎯 Bilim darajangizni ko'rish uchun YAKUNIY TEST vaqti!"
+                
+                keyboard = [[InlineKeyboardButton("🎯 Take Final Test" if lang == 'en' else "🎯 Yakuniy Test", callback_data="final_test")]]
+                
+                db.update_user(user['id'], update_fields)
+                await query.message.reply_text(final_msg, reply_markup=InlineKeyboardMarkup(keyboard))
+                return
+            elif current_day > 14:
+                # Already completed - show final test
+                final_msg = "🎯 You've completed the 14-day program!\n\nTake your final test:" if lang == 'en' else "🎯 14 kunlik dastur yakunlangan!\n\nYakuniy testni topshiring:"
+                keyboard = [[InlineKeyboardButton("🎯 Take Final Test" if lang == 'en' else "🎯 Yakuniy Test", callback_data="final_test")]]
+                await query.message.reply_text(final_msg, reply_markup=InlineKeyboardMarkup(keyboard))
+                return
+            
+            db.update_user(user['id'], update_fields)
+            
+            msg = f"✅ Great! Ready for Day {next_day}?\n\nUse /daily_lesson anytime to start!" if lang == 'en' else f"✅ Ajoyib! {next_day}-kun uchun tayyormisiz?\n\nIstalgan vaqt /daily_lesson buyrug'ini yuboring!"
+            await query.message.reply_text(msg)
+    finally:
+        processing.discard(key)
 
 async def handle_wait_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = context.bot_data['db']

@@ -78,7 +78,7 @@ class AirtableDB:
             }
             
             if lesson_day:
-                data["fields"]["Lesson Day"] = int(lesson_day)
+                data["fields"]["Lesson Day"] = str(lesson_day)
             
             url = f'https://api.airtable.com/v0/{self.base_id}/{self.tables["Quizzes"]}'
             response = requests.post(url, headers=self.headers, json=data)

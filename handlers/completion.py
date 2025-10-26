@@ -65,6 +65,7 @@ Good luck! 🚀"""
         btn_stats = "📊 View Stats"
     
     keyboard = [
+        [InlineKeyboardButton("🎯 Final Test", callback_data="final_test")],
         [InlineKeyboardButton(btn_practice, callback_data="extra_practice")],
         [InlineKeyboardButton(btn_stats, callback_data="view_stats")],
         [InlineKeyboardButton(btn_restart, callback_data="restart_program")]

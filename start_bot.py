@@ -1,4 +1,5 @@
 import os
+import requests
 from dotenv import load_dotenv
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 from airtable_db import AirtableDB
@@ -15,7 +16,22 @@ from handlers.completion import handle_extra_practice, handle_view_stats, handle
 
 load_dotenv()
 
+def clear_webhook():
+    """Clear any existing webhook"""
+    token = os.getenv('BOT_TOKEN')
+    url = f"https://api.telegram.org/bot{token}/deleteWebhook"
+    try:
+        response = requests.post(url)
+        print(f"[INFO] Webhook status: {response.json()}")
+    except:
+        pass
+
 def main():
+    print("[INFO] Starting BOMI DTM Bot...")
+    
+    # Clear webhook first
+    clear_webhook()
+    
     token = os.getenv('BOT_TOKEN')
     app = Application.builder().token(token).build()
     
@@ -23,7 +39,7 @@ def main():
     app.bot_data['db'] = AirtableDB()
     app.bot_data['user_sessions'] = {}
     app.bot_data['processing'] = set()
-    print("Bot initialized with Airtable database")
+    print("[OK] Bot initialized with Airtable database")
     
     # Command handlers
     app.add_handler(CommandHandler('start', start))
@@ -49,24 +65,29 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_confirm_restart, pattern="^confirm_restart$"))
     
     # Final test handlers
-    from handlers.final_test import start_final_test, handle_final_test_answer, show_final_test_details, retake_final_test
+    from handlers.final_test import start_final_test, handle_final_test_answer, show_final_test_details, retake_final_test, show_final_test_results
+    from handlers.completion import handle_program_completion
+    
     app.add_handler(CallbackQueryHandler(start_final_test, pattern="^final_test$"))
     app.add_handler(CallbackQueryHandler(handle_final_test_answer, pattern="^final_ans_"))
     app.add_handler(CallbackQueryHandler(show_final_test_details, pattern="^final_details$"))
     app.add_handler(CallbackQueryHandler(retake_final_test, pattern="^retake_final$"))
-    
-    # Import additional handlers for callbacks
-    from handlers.final_test import show_final_test_results
-    from handlers.completion import handle_program_completion
     app.add_handler(CallbackQueryHandler(show_final_test_results, pattern="^back_to_final_results$"))
     app.add_handler(CallbackQueryHandler(handle_program_completion, pattern="^main_menu$"))
-
     
     # Text handler
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     
-    print("Bot running...")
-    app.run_polling()
+    print("[OK] All handlers registered")
+    print("[INFO] Bot running with final test feature...")
+    print("[INFO] Features: Onboarding -> Diagnostic -> 14-day Program -> Final Test")
+    
+    try:
+        app.run_polling(drop_pending_updates=True)
+    except KeyboardInterrupt:
+        print("[INFO] Bot stopped by user")
+    except Exception as e:
+        print(f"[ERROR] Bot error: {e}")
 
 if __name__ == '__main__':
     main()

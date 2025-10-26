@@ -202,40 +202,36 @@ DIFFICULTY: ADVANCED LEVEL - DTM EXAM COMPLEXITY
 - Geometry: conic sections, 3D problems, coordinate geometry"""
                 }
                 
+                # For Beginner level, use dataset questions directly instead of AI
+                if level == 'Beginner':
+                    print("Using dataset questions for Beginner level")
+                    dataset_questions = self._get_dataset_questions(count, language=language, level='Beginner')
+                    if len(dataset_questions) == count:
+                        return dataset_questions
+                    else:
+                        print(f"Warning: Only got {len(dataset_questions)} questions from dataset")
+                        # Continue to try AI generation as fallback
+                
                 prompt = f"""
-{self.training_context}
+Generate {count} math questions in {lang_text} for {level} level DTM exam.
 
-You are an expert DTM exam question generator trained on {len(self.full_dataset)} real problems.
+Format each question exactly like this:
 
-{lang_instructions}
+QUESTION: What is 2 + 3?
+A) 4
+B) 5
+C) 6
+D) 7
+CORRECT: B
 
-{difficulty_instructions.get(level, difficulty_instructions['Intermediate'])}
+QUESTION: What is 10 - 4?
+A) 5
+B) 6
+C) 7
+D) 8
+CORRECT: B
 
-STUDY THESE {level.upper()} LEVEL EXAMPLES:
-{self._format_comprehensive_examples(training_examples)}
-
-GENERATE EXACTLY {count} COMPLETE questions in {lang_text} at {level.upper()} level. MUST have {count} questions, no more, no less.
-
-RULES:
-- Follow DTM exam format exactly
-- Match {level.upper()} difficulty level precisely
-- Use mathematical constants: {', '.join(self.constants[:5])}
-- Apply operations: {', '.join(self.operations[:10])}
-- PLAIN TEXT only, no LaTeX, no extra symbols
-- Use only basic math symbols: +, -, ×, ÷, =, (), %
-- 4 options A-D with clear correct answer
-- ALL OPTIONS MUST BE DIFFERENT AND UNIQUE
-- NO DUPLICATE VALUES OR REPEATED OPTIONS
-
-Format:
-QUESTION: [text]
-A) [unique option 1]
-B) [unique option 2] 
-C) [unique option 3]
-D) [unique option 4]
-CORRECT: [A/B/C/D]
-
-IMPORTANT: Each option must be DIFFERENT and UNIQUE!
+Generate {count} questions now:
 """
                 
                 response = openai.ChatCompletion.create(
@@ -264,8 +260,8 @@ IMPORTANT: Each option must be DIFFERENT and UNIQUE!
                 continue
         
         # If all AI attempts failed, use dataset
-        print("AI generation completed")
-        return self._get_dataset_questions(count, language=language)
+        print("AI generation failed, using dataset questions")
+        return self._get_dataset_questions(count, language=language, level=level)
     
     def generate_practice_questions(self, topic, language='uz', count=5, user_level='Intermediate'):
         """Generate practice questions using comprehensive dataset training"""
@@ -539,13 +535,16 @@ Rationale: {rationale}...
 """)
         return '\n'.join(formatted)
     
-    def _get_dataset_questions(self, count, topic=None, language='uz'):
+    def _get_dataset_questions(self, count, topic=None, language='uz', level=None):
         """Get questions directly from comprehensive dataset - guaranteed count"""
         if not self.full_dataset:
             return []
             
+        # Filter by level first if specified
+        if level:
+            filtered = self._get_comprehensive_examples(level, count=count*3)
         # Filter by topic if specified
-        if topic:
+        elif topic:
             topic_map = {
                 'algebra': ['general', 'gain'],
                 'geometry': ['geometry', 'physics'],
@@ -655,6 +654,58 @@ Keep under 400 words.
                 return f"Mavzu: {topic}\nDTM imtihoniga tayyorgarlik uchun asosiy tushunchalar va formulalar."
             else:
                 return f"Topic: {topic}\nBasic concepts and formulas for DTM exam preparation."
+    
+    def generate_final_test_questions(self, user_level, target_score, count=12):
+        """Generate challenging final test questions"""
+        try:
+            # Use advanced filtering for final test
+            if user_level in ['Advanced', 'Advanced+']:
+                difficulty_level = 'Advanced'
+            elif user_level in ['Intermediate', 'Intermediate+']:
+                difficulty_level = 'Intermediate'
+            else:
+                difficulty_level = 'Beginner'
+            
+            # Get challenging questions from dataset
+            filtered_questions = self._get_comprehensive_examples(difficulty_level, count=count*2)
+            
+            if len(filtered_questions) < count:
+                # If not enough, mix with slightly easier questions
+                if difficulty_level == 'Advanced':
+                    additional = self._get_comprehensive_examples('Intermediate', count=count)
+                elif difficulty_level == 'Intermediate':
+                    additional = self._get_comprehensive_examples('Beginner', count=count)
+                else:
+                    additional = []
+                
+                filtered_questions.extend(additional)
+            
+            # Ensure we have enough questions
+            if len(filtered_questions) < count:
+                filtered_questions = random.sample(self.full_dataset, min(count, len(self.full_dataset)))
+            
+            # Select exactly 12 questions
+            selected = random.sample(filtered_questions, min(count, len(filtered_questions)))
+            
+            # Format questions
+            formatted_questions = []
+            for q in selected:
+                options = q.get('options', '').split(' , ')
+                if len(options) >= 4:
+                    clean_options = [self._clean_option(opt.strip()) for opt in options[:4]]
+                    if len(set(clean_options)) == 4 and all(opt for opt in clean_options):
+                        formatted_questions.append({
+                            'question': self._clean_text(q['Problem']),
+                            'options': clean_options,
+                            'correct_answer': q['correct'].upper(),
+                            'explanation': self._clean_text(q.get('Rationale', ''))
+                        })
+            
+            return formatted_questions[:count]
+            
+        except Exception as e:
+            print(f"Error generating final test questions: {e}")
+            return []
     
     def _clean_option(self, option):
         """Clean option text by removing letter prefixes like 'a )', 'b )', etc."""

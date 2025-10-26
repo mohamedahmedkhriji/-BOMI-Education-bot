@@ -64,7 +64,11 @@ async def set_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Set Mode in database so onboarding.py can handle the time input
     if user:
-        db.update_user(user['id'], {'Mode': 'set_reminder_time', 'Expected': 'reminder_time'})
+        db.update_user(user['id'], {
+            'Mode': 'set_reminder_time', 
+            'Expected': 'reminder_time',
+            'Learning Status': 'In Progress'  # Set to In Progress so /daily_lesson works
+        })
     
     msg = "⏰ Vaqtni yuboring (HH:MM)\nMasalan: 18:00" if lang == 'uz' else "⏰ Send time (HH:MM)\nExample: 18:00"
     await query.message.reply_text(msg)

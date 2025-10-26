@@ -70,12 +70,20 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 questions = None
                 continue
         
-        # Final validation
+        # Final validation - if still not enough, get from dataset directly
         if not questions or len(questions) != 12:
-            print(f"Failed to generate exactly 12 questions after 3 attempts")
-            await query.message.reply_text("Unable to generate complete test. Please try again in a moment.")
-            processing.discard(key)
-            return
+            print(f"Failed to generate exactly 12 questions after 3 attempts, using dataset directly")
+            try:
+                questions = ai._get_dataset_questions(12, language=lang, level=level)
+                if len(questions) != 12:
+                    await query.message.reply_text("Unable to generate complete test. Please try again in a moment.")
+                    processing.discard(key)
+                    return
+            except Exception as e:
+                print(f"Dataset fallback failed: {e}")
+                await query.message.reply_text("Unable to generate complete test. Please try again in a moment.")
+                processing.discard(key)
+                return
         
         print(f"Successfully generated {len(questions)} questions for level {level} in {lang}")
         
@@ -224,6 +232,7 @@ async def show_results(query, user_id, user_sessions, db):
     
     user = db.get_user(user_id)
     if user:
+        user_data = user.get('fields', {})
         db.update_user(user['id'], {
             'Test Score': str(percentage),
             'Strong Topics': ', '.join(strongest),

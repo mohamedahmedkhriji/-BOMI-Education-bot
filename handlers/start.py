@@ -28,18 +28,42 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lang = user_data.get('Language', 'en')
         
         if learning_status == 'In Progress':
-            current_day = user_data.get('Current Day', '1')
+            current_day = int(user_data.get('Current Day', '1'))
             test_score = float(user_data.get('Test Score', '0'))
             timezone = user_data.get('Timezone', '')
             
-            if lang == 'uz':
-                text = f"Xush kelibsiz! 👋\n\n📊 Sizning jarayoningiz:\n• Kun: {current_day}/14\n• Ball: {test_score:.0f}%\n• Vaqt: {timezone}\n\n📚 Bugungi darsni boshlaysizmi?"
-                btn = "📚 Darsni boshlash"
+            # Check if program is completed
+            if current_day > 14:
+                if lang == 'uz':
+                    text = f"🎉 TABRIKLAYMIZ! 14 kunlik dastur yakunlangan!\n\n📊 Sizning natijangiz:\n• Yakunlangan kunlar: 14/14\n• Boshlang'ich ball: {test_score:.0f}%\n\n🎯 Yakuniy testni topshiring:"
+                    btn = "🎯 Yakuniy Test"
+                else:
+                    text = f"🎉 CONGRATULATIONS! 14-day program completed!\n\n📊 Your results:\n• Days completed: 14/14\n• Initial score: {test_score:.0f}%\n\n🎯 Take your final test:"
+                    btn = "🎯 Final Test"
+                
+                keyboard = [[InlineKeyboardButton(btn, callback_data="final_test")]]
+                await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
             else:
-                text = f"Welcome back! 👋\n\n📊 Progress:\n• Day: {current_day}/14\n• Score: {test_score:.0f}%\n• Time: {timezone}\n\n📚 Ready for today's lesson?"
-                btn = "📚 Start Lesson"
+                if lang == 'uz':
+                    text = f"Xush kelibsiz! 👋\n\n📊 Sizning jarayoningiz:\n• Kun: {current_day}/14\n• Ball: {test_score:.0f}%\n• Vaqt: {timezone}\n\n📚 Bugungi darsni boshlaysizmi?"
+                    btn = "📚 Darsni boshlash"
+                else:
+                    text = f"Welcome back! 👋\n\n📊 Progress:\n• Day: {current_day}/14\n• Score: {test_score:.0f}%\n• Time: {timezone}\n\n📚 Ready for today's lesson?"
+                    btn = "📚 Start Lesson"
+                
+                keyboard = [[InlineKeyboardButton(btn, callback_data="daily_lesson")]]
+                await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        
+        elif learning_status == 'Completed':
+            # Program completed - show final test
+            if lang == 'uz':
+                text = f"🎉 TABRIKLAYMIZ! 14 kunlik dastur yakunlangan!\n\n🎯 Yakuniy testni topshiring:"
+                btn = "🎯 Yakuniy Test"
+            else:
+                text = f"🎉 CONGRATULATIONS! 14-day program completed!\n\n🎯 Take your final test:"
+                btn = "🎯 Final Test"
             
-            keyboard = [[InlineKeyboardButton(btn, callback_data="daily_lesson")]]
+            keyboard = [[InlineKeyboardButton(btn, callback_data="final_test")]]
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         
         elif learning_status in ['Test Completed', 'Onboarded']:
