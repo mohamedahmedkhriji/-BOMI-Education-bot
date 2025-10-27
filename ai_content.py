@@ -128,8 +128,12 @@ INSTRUCTIONS:
     def _clean_text(self, text):
         """Remove markdown and LaTeX formatting, keep only essential math symbols"""
         import re
+        import html
         if not text:
             return ""
+        
+        # Decode HTML entities first
+        text = html.unescape(text)
         
         # Remove LaTeX math delimiters
         text = re.sub(r'\\\(|\\\)|\\\[|\\\]', '', text)
