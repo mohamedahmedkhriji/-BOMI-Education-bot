@@ -132,13 +132,14 @@ INSTRUCTIONS:
         if not text:
             return ""
         
-        # Decode HTML entities first
-        text = html.unescape(text)
+        # Decode HTML entities multiple times to catch nested encoding
+        for _ in range(3):
+            text = html.unescape(text)
         
-        # Remove LaTeX math delimiters (both \( \) and \[ \])
-        text = re.sub(r'\\\(|\\\)|\\\[|\\\]', '', text)
-        text = re.sub(r'\\\(', '', text)
-        text = re.sub(r'\\\)', '', text)
+        # Remove all LaTeX delimiters and backslashes
+        text = text.replace('\\(', '').replace('\\)', '')
+        text = text.replace('\\[', '').replace('\\]', '')
+        text = text.replace('\(', '').replace('\)', '')
         
         # Replace LaTeX commands with simple text
         text = re.sub(r'\\text\{([^}]+)\}', r'\1', text)  # \text{Area} -> Area
@@ -179,8 +180,13 @@ INSTRUCTIONS:
         # Validate language
         language = self._validate_language(language)
         
-        # Try AI generation first with multiple attempts
-        for attempt in range(3):
+        # USE DATASET ONLY - NO AI GENERATION to avoid language mixing
+        print(f"Using dataset questions for {level} level")
+        return self._get_dataset_questions(count, language=language, level=level)
+        
+        # OLD AI generation code (disabled)
+        if False:
+         for attempt in range(3):
             try:
                 training_examples = self._get_comprehensive_examples(level, count=10)
                 lang_text = "Uzbek" if language == 'uz' else "English"
@@ -292,7 +298,14 @@ Generate {count} questions now:
         """Generate practice questions using comprehensive dataset training"""
         # Validate language
         language = self._validate_language(language)
-        topic_examples = self._get_comprehensive_topic_examples(topic, count=8)
+        
+        # USE DATASET ONLY - NO AI to avoid language mixing
+        print(f"Using dataset questions for {topic}")
+        return self._get_dataset_questions(count, topic, language=language)
+        
+        # OLD CODE (disabled)
+        if False:
+         topic_examples = self._get_comprehensive_topic_examples(topic, count=8)
         
         lang_text = "Uzbek" if language == 'uz' else "English"
         
