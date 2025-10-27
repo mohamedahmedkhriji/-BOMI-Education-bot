@@ -135,8 +135,10 @@ INSTRUCTIONS:
         # Decode HTML entities first
         text = html.unescape(text)
         
-        # Remove LaTeX math delimiters
+        # Remove LaTeX math delimiters (both \( \) and \[ \])
         text = re.sub(r'\\\(|\\\)|\\\[|\\\]', '', text)
+        text = re.sub(r'\\\(', '', text)
+        text = re.sub(r'\\\)', '', text)
         
         # Replace LaTeX commands with simple text
         text = re.sub(r'\\text\{([^}]+)\}', r'\1', text)  # \text{Area} -> Area
